@@ -134,7 +134,7 @@ const RE_SOURCE_PREFIX = /^(npm:|git:)/;
 
 // ── Version fetch ──────────────────────────────────────────────────────────
 
-const NPM_REGISTRY_URL = "https://registry.npmjs.org/@mariozechner/pi-coding-agent/latest";
+const NPM_REGISTRY_URL = "https://registry.npmjs.org/@earendil-works/pi-coding-agent/latest";
 const FETCH_TIMEOUT_MS = 4000;
 
 async function fetchLatestVersion(): Promise<string | undefined> {
