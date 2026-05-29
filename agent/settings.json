@@ -1,7 +1,7 @@
 {
   "lastChangelogVersion": "0.77.0",
   "defaultProvider": "ollama-cloud",
-  "defaultModel": "kimi-k2.6",
+  "defaultModel": "glm-5.1",
   "theme": "catppuccin-mocha",
   "npmCommand": [
     "pnpm"

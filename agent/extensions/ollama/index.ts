@@ -383,7 +383,7 @@ function registerLocalProvider(pi: ExtensionAPI, models: ProviderModelConfig[]) 
 function registerCloudProvider(pi: ExtensionAPI, models: ProviderModelConfig[]) {
   pi.registerProvider("ollama-cloud", {
     baseUrl: `${CLOUD_BASE}/v1`,
-    apiKey: "OLLAMA_API_KEY",
+    apiKey: "$OLLAMA_API_KEY",
     api: "openai-completions",
     models,
     oauth: {
@@ -564,7 +564,7 @@ function registerWebTools(pi: ExtensionAPI) {
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
 
-export default async function (pi: ExtensionAPI) {
+export default async function(pi: ExtensionAPI) {
   // Boot: cloud from cache or fallback
   const cached = readCache();
   registerCloudProvider(pi, cached ? assembleCloudModels(cached) : FALLBACK_MODELS);
