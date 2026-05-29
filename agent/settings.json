@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "0.75.5",
+  "lastChangelogVersion": "0.77.0",
   "defaultProvider": "ollama-cloud",
   "defaultModel": "kimi-k2.6",
   "theme": "catppuccin-mocha",
