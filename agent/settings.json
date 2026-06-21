@@ -1,7 +1,7 @@
 {
-  "lastChangelogVersion": "0.77.0",
+  "lastChangelogVersion": "0.79.9",
   "defaultProvider": "ollama-cloud",
-  "defaultModel": "glm-5.1",
+  "defaultModel": "glm-5.2",
   "theme": "catppuccin-mocha",
   "npmCommand": [
     "pnpm"
@@ -16,17 +16,14 @@
   "packages": [
     "npm:@ifi/pi-plan",
     "npm:@lpirito/pi-diffloop",
-    "npm:@sting8k/pi-vcc",
-    "npm:context-mode",
     "npm:pi-ask-mode",
+    "npm:pi-lean-ctx",
     "npm:pi-mcp-adapter",
-    "npm:pi-rtk-optimizer",
     "npm:pi-secret-guard",
     "npm:pi-subagents",
     "npm:pi-tool-display"
   ],
   "extensionSettings": {
-    "caveman": "full",
     "notifications": true
   }
 }
