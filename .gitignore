@@ -25,6 +25,7 @@
 !agent/mcp.json
 !agent/models.json
 !agent/settings.json
+!agent/ollama-cloud.json
 
 !AGENTS.md
 !README.md
