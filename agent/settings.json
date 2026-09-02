@@ -1,11 +1,9 @@
 {
   "lastChangelogVersion": "0.84.4",
   "defaultProvider": "ollama-cloud",
-  "defaultModel": "glm-5.2",
+  "defaultModel": "glm-5.3-flash",
   "theme": "catppuccin-mocha",
-  "npmCommand": [
-    "pnpm"
-  ],
+  "npmCommand": ["pnpm"],
   "enableInstallTelemetry": false,
   "quietStartup": false,
   "hideThinkingBlock": false,
@@ -15,10 +13,10 @@
   },
   "packages": [
     "npm:@ifi/pi-plan",
-    "npm:@lpirito/pi-diffloop",
     "npm:pi-ask-mode",
     "npm:pi-lean-ctx",
     "npm:pi-mcp-adapter",
+    "npm:pi-ollama-cloud",
     "npm:pi-secret-guard",
     "npm:pi-subagents",
     "npm:pi-tool-display"
@@ -27,3 +25,4 @@
     "notifications": true
   }
 }
+
