@@ -1,28 +1,25 @@
 {
-  "lastChangelogVersion": "0.84.4",
+  "lastChangelogVersion": "0.87.1",
   "defaultProvider": "ollama-cloud",
-  "defaultModel": "glm-5.3-flash",
+  "defaultModel": "deepseek-v4.1-flash",
   "theme": "catppuccin-mocha",
-  "npmCommand": ["pnpm"],
+  "npmCommand": [
+    "pnpm"
+  ],
   "enableInstallTelemetry": false,
   "quietStartup": false,
-  "hideThinkingBlock": false,
+  "hideThinkingBlock": true,
   "defaultThinkingLevel": "medium",
   "terminal": {
     "showTerminalProgress": true
   },
   "packages": [
-    "npm:@ifi/pi-plan",
-    "npm:pi-ask-mode",
     "npm:pi-lean-ctx",
     "npm:pi-mcp-adapter",
     "npm:pi-ollama-cloud",
-    "npm:pi-secret-guard",
-    "npm:pi-subagents",
-    "npm:pi-tool-display"
+    "npm:pi-subagents"
   ],
   "extensionSettings": {
     "notifications": true
   }
 }
-

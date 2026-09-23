@@ -29,3 +29,7 @@
 
 !AGENTS.md
 !README.md
+
+
+agent/extensions/herdr-agent-state.ts
+agent/extensions/pi-lean-ctx
