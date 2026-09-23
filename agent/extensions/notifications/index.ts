@@ -2,7 +2,7 @@
  * Notifications Extension
  *
  * Desktop notification when the agent finishes a turn.
- * Uses OSC 777 escape sequence (Ghostty, iTerm2, WezTerm, rxvt-unicode, foot).
+ * Uses the OSC 777 escape sequence (Ghostty, iTerm2, WezTerm, rxvt-unicode, foot).
  *
  * Commands:
  *   /notifications        → toggle on/off
@@ -11,43 +11,20 @@
  *   /notifications status → show current state
  *
  * State persisted in extensionSettings.notifications (settings.json).
+ * Text extraction and formatting live in `./format` (pure, unit-tested).
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { AutocompleteItem } from "@mariozechner/pi-tui";
-import { Markdown, type MarkdownTheme } from "@mariozechner/pi-tui";
+import { Markdown, type AutocompleteItem, type MarkdownTheme } from "@mariozechner/pi-tui";
 import { getExtSetting, setExtSetting } from "../../utils/extension-settings/index.js";
+import {
+  buildNotificationContent,
+  buildOscNotification,
+  extractLastAssistantText,
+} from "./format.js";
 
-// ── OSC 777 notification ──────────────────────────────────────────────
+const MARKDOWN_WIDTH = 80;
 
-function sanitizeTerminal(str: string): string {
-  return str.replace(/[\x00-\x1f\x7f]/g, "");
-}
-
-const notify = (title: string, body: string): void => {
-  if (!process.stdout.isTTY) return;
-  const s = (v: string) => sanitizeTerminal(v);
-  process.stdout.write(`\x1b]777;notify;${s(title)};${s(body)}\x07`);
-};
-
-// ── Extract last assistant text ───────────────────────────────────────
-
-const isTextPart = (part: unknown): part is { type: "text"; text: string } =>
-  Boolean(part && typeof part === "object" && "type" in part && part.type === "text" && "text" in part);
-
-const extractLastAssistantText = (messages: Array<{ role?: string; content?: unknown }>): string | null => {
-  const lastAssistant = messages.filter((m) => m?.role === "assistant").at(-1);
-  if (!lastAssistant) return null;
-
-  const content = lastAssistant.content;
-  if (typeof content === "string") return content.trim() || null;
-  if (Array.isArray(content)) {
-    const text = content.filter(isTextPart).map((p) => p.text).join("\n").trim();
-    return text || null;
-  }
-  return null;
-};
-
-// ── Markdown → plain text ─────────────────────────────────────────────
+// ── Markdown → plain text ──────────────────────────────────────────────
 
 const plainMarkdownTheme: MarkdownTheme = {
   heading: (text) => text,
@@ -66,21 +43,17 @@ const plainMarkdownTheme: MarkdownTheme = {
   underline: (text) => text,
 };
 
-const simpleMarkdown = (text: string, width = 80): string => {
-  const md = new Markdown(text, 0, 0, plainMarkdownTheme);
-  return md.render(width).join("\n");
+const toPlainText = (text: string): string =>
+  new Markdown(text, 0, 0, plainMarkdownTheme).render(MARKDOWN_WIDTH).join("\n");
+
+// ── OSC 777 notification ───────────────────────────────────────────────
+
+const notify = (title: string, body: string): void => {
+  if (!process.stdout.isTTY) return;
+  process.stdout.write(buildOscNotification(title, body));
 };
 
-const formatNotification = (text: string | null): { title: string; body: string } => {
-  const simplified = text ? simpleMarkdown(text) : "";
-  const normalized = simplified.replace(/\s+/g, " ").trim();
-  if (!normalized) return { title: "Ready for input", body: "" };
-  const maxBody = 200;
-  const body = normalized.length > maxBody ? `${normalized.slice(0, maxBody - 1)}…` : normalized;
-  return { title: "π", body };
-};
-
-// ── /notifications command ────────────────────────────────────────────
+// ── /notifications command ─────────────────────────────────────────────
 
 const SUBCOMMANDS: AutocompleteItem[] = [
   { value: "on", label: "on" },
@@ -88,26 +61,26 @@ const SUBCOMMANDS: AutocompleteItem[] = [
   { value: "status", label: "status" },
 ];
 
-// ── Extension entry ──────────────────────────────────────────────────
+// ── Extension entry ────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI): void {
-  pi.on("agent_end", async (event) => {
+  pi.on("agent_end", (event) => {
     if (!getExtSetting("notifications", true)) return;
-    const lastText = extractLastAssistantText(event.messages ?? []);
-    const { title, body } = formatNotification(lastText);
+    const text = extractLastAssistantText(event.messages ?? []);
+    const { title, body } = buildNotificationContent(text ? toPlainText(text) : "");
     notify(title, body);
   });
 
   pi.registerCommand("notifications", {
     description: "Desktop notifications: /notifications [on|off|status] (no arg = toggle)",
     getArgumentCompletions: (prefix: string): AutocompleteItem[] | null => {
-      const filtered = SUBCOMMANDS.filter((i) => i.value.startsWith(prefix));
+      const filtered = SUBCOMMANDS.filter((item) => item.value.startsWith(prefix));
       return filtered.length > 0 ? filtered : null;
     },
     handler: async (args, ctx) => {
       const arg = args.trim().toLowerCase();
       const current = getExtSetting("notifications", true);
-      const label = (v: boolean) => (v ? "enabled" : "disabled");
+      const label = (value: boolean): string => (value ? "enabled" : "disabled");
 
       if (arg === "status") {
         ctx.ui.notify(`Notifications: ${current ? "on" : "off"}`, "info");

@@ -36,3 +36,17 @@ Default: enabled. State persisted as `extensionSettings.notifications` in `setti
 3. Normalizes whitespace, truncates to 200 chars (with `…`).
 4. Sends via OSC 777: title `"π"`, body = the snippet.
 5. If no text found: title `"Ready for input"`, empty body.
+
+## Files
+
+| File | Purpose |
+|------|---------|
+| `index.ts` | Extension wiring: `agent_end` handler, `/notifications` command, Markdown→plain text |
+| `format.ts` | Pure helpers (terminal sanitizing, OSC 777, text extraction, formatting). No Pi dependencies. |
+| `format.test.ts` | Unit tests for `format.ts` |
+
+## Tests
+
+```sh
+node --test agent/extensions/notifications/format.test.ts
+```
