@@ -16,8 +16,7 @@
   "packages": [
     "npm:pi-lean-ctx",
     "npm:pi-mcp-adapter",
-    "npm:pi-ollama-cloud",
-    "npm:pi-subagents"
+    "npm:pi-ollama-cloud"
   ],
   "extensionSettings": {
     "notifications": true
