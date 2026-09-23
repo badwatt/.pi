@@ -43,7 +43,7 @@ Installed from [`settings.json`](agent/settings.json) `packages` array:
 | `defaultModel` | `string` | — | `glm-5.2` | Default model ID |
 | `theme` | `string` | — | `catppuccin-mocha` | TUI theme |
 | `npmCommand` | `string[]` | — | `pnpm` | Preferred npm client command |
-| `quietStartup` | `boolean` | `false` | `false` | Suppress startup messages |
+| `quietStartup` | `boolean` | `false` | `true` | Suppress startup messages |
 | `hideThinkingBlock` | `boolean` | `false` | `false` | Hide thinking blocks in output |
 | `defaultThinkingLevel` | `string` | `medium` | `medium` | Default thinking level |
 | `enableInstallTelemetry` | `boolean` | `true` | `false` | Telemetry on package install |

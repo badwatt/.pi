@@ -7,7 +7,7 @@
     "pnpm"
   ],
   "enableInstallTelemetry": false,
-  "quietStartup": false,
+  "quietStartup": true,
   "hideThinkingBlock": true,
   "defaultThinkingLevel": "medium",
   "terminal": {
