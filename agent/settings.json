@@ -15,7 +15,6 @@
   },
   "packages": [
     "npm:pi-lean-ctx",
-    "npm:pi-mcp-adapter",
     "npm:pi-ollama-cloud"
   ],
   "extensionSettings": {
