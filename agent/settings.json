@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "0.99.1",
+  "lastChangelogVersion": "0.99.2",
   "defaultProvider": "ollama-cloud",
   "defaultModel": "deepseek-v4.1-flash",
   "theme": "catppuccin-mocha",
@@ -8,6 +8,7 @@
   ],
   "enableInstallTelemetry": false,
   "quietStartup": true,
+  "tuiMode": "fullscreen",
   "hideThinkingBlock": true,
   "defaultThinkingLevel": "medium",
   "terminal": {
