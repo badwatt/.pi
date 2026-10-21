@@ -107,14 +107,14 @@ const installFooter = (pi: ExtensionAPI, ctx: ExtensionContext): void => {
 
     return {
       dispose,
-      invalidate() {},
+      invalidate() { },
       render(width: number): string[] {
         const model = resolveModel(state.model, ctx.model as ModelRef | null);
         const thinking = state.footer ? pi.getThinkingLevel() : "off";
         const segments = [
           renderModel(theme, model, thinking),
           renderTokenStats(theme, state.usageTotals, contextUsagePercent(ctx)),
-          theme.fg("dim", `⏱${formatElapsed(Date.now() - state.sessionStart)}`),
+          theme.fg("dim", `◷ ${formatElapsed(Date.now() - state.sessionStart)}`),
           theme.fg("muted", `⌂ ${shortenCwd(state.cwd || ctx.cwd)}`),
         ];
 
@@ -124,7 +124,8 @@ const installFooter = (pi: ExtensionAPI, ctx: ExtensionContext): void => {
         const statuses = data.getExtensionStatuses();
         if (statuses.size > 0) segments.push(theme.fg("dim", [...statuses.values()].join(" | ")));
 
-        if (state.lastTps > 0) segments.push(theme.fg("success", `${state.lastTps.toFixed(1)} tok/s`));
+        if (state.lastTps > 0)
+          segments.push(theme.fg("success", `${state.lastTps.toFixed(1)} tok/s`));
         if (state.lastQueryMs > 0) segments.push(theme.fg("dim", formatElapsed(state.lastQueryMs)));
 
         const line = segments.join(theme.fg("dim", " | "));
@@ -137,7 +138,7 @@ const installFooter = (pi: ExtensionAPI, ctx: ExtensionContext): void => {
 
 // ── Extension entry ────────────────────────────────────────────────────
 
-export default function (pi: ExtensionAPI): void {
+export default function(pi: ExtensionAPI): void {
   pi.on("session_start", async (event, ctx) => {
     if (event.reason === "new" || event.reason === "fork" || event.reason === "startup") {
       resetTimings();
@@ -172,7 +173,8 @@ export default function (pi: ExtensionAPI): void {
   pi.on("agent_end", (event) => {
     if (state.agentStartMs === 0) return;
     const output = event.messages.reduce(
-      (total, message) => (message.role === "assistant" ? total + outputTokens(message.usage) : total),
+      (total, message) =>
+        message.role === "assistant" ? total + outputTokens(message.usage) : total,
       0,
     );
     const elapsed = Date.now() - state.agentStartMs;
