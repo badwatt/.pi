@@ -15,5 +15,7 @@
   "packages": ["npm:@pi-archimedes/sudo", "npm:pi-lean-ctx", "npm:pi-ollama-cloud"],
   "extensionSettings": {
     "notifications": true
-  }
+  },
+  "enabledModels": ["ollama-cloud/*", "minimax/*", "opencode-go/*"]
 }
+
