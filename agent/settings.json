@@ -1,9 +1,11 @@
 {
-  "lastChangelogVersion": "1.4.0",
+  "lastChangelogVersion": "1.5.0",
   "defaultProvider": "ollama-cloud",
   "defaultModel": "deepseek-v4.1-flash",
   "theme": "catppuccin-mocha",
-  "npmCommand": ["pnpm"],
+  "npmCommand": [
+    "pnpm"
+  ],
   "enableInstallTelemetry": false,
   "quietStartup": true,
   "tuiMode": "fullscreen",
@@ -12,10 +14,20 @@
   "terminal": {
     "showTerminalProgress": true
   },
-  "packages": ["npm:@pi-archimedes/sudo", "npm:pi-lean-ctx", "npm:pi-ollama-cloud"],
+  "packages": [
+    "npm:@pi-archimedes/sudo",
+    "npm:pi-lean-ctx",
+    "npm:pi-ollama-cloud"
+  ],
   "extensionSettings": {
     "notifications": true
   },
-  "enabledModels": ["ollama-cloud/*", "minimax/*", "opencode-go/*"]
+  "enabledModels": [
+    "ollama-cloud/*",
+    "minimax/*",
+    "opencode-go/*"
+  ],
+  "extensionChangelogVersions": {
+    "{\"source\":\"npm:pi-ollama-cloud\",\"scope\":\"user\"}": "0.13.1"
+  }
 }
-
