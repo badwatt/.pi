@@ -87,17 +87,29 @@ export const parsePatch = (patch: string): ParsedPatch => {
 
 /**
  * Model a whole file as one all-additions hunk (pierre renders added files the
- * same way). `limit` bounds work on large writes; `totalLines` stays accurate.
+ * same way). Only `limit` rows are materialised, but `additions` stays exact:
+ * the scan is a single `indexOf` pass, so a large write costs no line array.
  */
 export const addedFilePatch = (content: string, limit: number): ParsedPatch => {
-  const lines = content.length === 0 ? [] : content.replace(/\n$/, "").split("\n");
-  const rows: DiffRow[] = lines
-    .slice(0, limit)
-    .map((text, index) => ({ kind: "addition" as const, newNo: index + 1, text }));
+  const rows: DiffRow[] = [];
+  const end = content.endsWith("\n") ? content.length - 1 : content.length;
+  let start = 0;
+  let additions = 0;
+
+  while (content.length > 0 && start <= end) {
+    const newline = content.indexOf("\n", start);
+    const stop = newline === -1 || newline > end ? end : newline;
+    additions++;
+    if (rows.length < limit) {
+      rows.push({ kind: "addition", newNo: additions, text: content.slice(start, stop) });
+    }
+    if (stop === end) break;
+    start = stop + 1;
+  }
 
   return {
-    hunks: [{ oldStart: 0, oldCount: 0, newStart: 1, newCount: lines.length, header: "", rows }],
-    additions: lines.length,
+    hunks: [{ oldStart: 0, oldCount: 0, newStart: 1, newCount: additions, header: "", rows }],
+    additions,
     deletions: 0,
   };
 };

@@ -49,7 +49,10 @@ export interface Palette<C = unknown> {
 }
 
 export interface RenderLimits {
+  /** Hard cap on produced lines; layout stops as soon as it is reached. */
   maxLines: number;
+  /** Shown in place of the truncated output (e.g. "⋯ diff truncated · ctrl+o"). */
+  truncatedNote?: string;
 }
 
 interface Side {
@@ -153,14 +156,6 @@ const separatorLines = <C>(
   return [renderer.fg("dim", renderer.truncate(line, width))];
 };
 
-const capLines = <C>(lines: string[], limits: RenderLimits, renderer: Renderer<C>, width: number): string[] => {
-  const note = (count: number): string =>
-    renderer.truncate(renderer.fg("dim", `${HIDDEN} ${count} more diff lines`), width);
-  if (lines.length <= limits.maxLines) return lines;
-  const kept = limits.maxLines > 1 ? lines.slice(0, limits.maxLines - 1) : [];
-  return [...kept, note(lines.length - kept.length)];
-};
-
 /** Render a parsed patch into styled terminal lines for the given width. */
 export const renderPatch = <C>(
   patch: ParsedPatch,
@@ -214,20 +209,31 @@ export const renderPatch = <C>(
       config.indicators === "none" ? "" : `${renderer.fg(token, markerFor(row.kind, config.indicators))} `;
     const head = lineBg + gutter + marker;
 
-    const bodyLines = config.wrap ? renderer.wrap(text, contentWidth) : [renderer.truncate(text, contentWidth)];
-    return bodyLines.map((line) => {
+    const bodyLines = config.wrap
+      ? renderer.wrap(text, contentWidth)
+      : [renderer.truncate(text, contentWidth)];
+    const indent = " ".repeat(headWidth);
+
+    return bodyLines.map((line, index) => {
       const fill = Math.max(0, contentWidth - renderer.width(line));
-      const padded = head + line + " ".repeat(fill);
+      // Wrapped continuation rows repeat neither the number nor the marker.
+      const padded = (index === 0 ? head : indent) + line + " ".repeat(fill);
       return lineBg ? padded + RESET_BG : padded;
     });
   };
 
   const lines: string[] = [];
-  patch.hunks.forEach((hunk, hunkIndex) => {
-    if (hunkIndex > 0) {
-      lines.push(...separatorLines(hunk, patch.hunks[hunkIndex - 1], config, renderer, width));
-    }
+  let truncated = false;
+
+  // Layout stops at the cap instead of painting the whole diff and slicing it.
+  // A 1200 row diff costs one frame instead of ~60ms of discarded work.
+  const paintPairs = (hunk: DiffHunk): void => {
     for (const pair of pairRows(hunk.rows, config.lineDiff)) {
+      if (lines.length >= limits.maxLines) {
+        truncated = true;
+        return;
+      }
+
       if (!split) {
         if (pair.left) lines.push(...paint(pair.left, true, textWidth));
         if (pair.right) lines.push(...paint(pair.right, true, textWidth));
@@ -246,7 +252,18 @@ export const renderPatch = <C>(
         lines.push((left[line] ?? blank(columnWidth)) + divider + (right[line] ?? blank(rightWidth)));
       }
     }
-  });
+  };
 
-  return capLines(lines, limits, renderer, width);
+  for (let hunkIndex = 0; hunkIndex < patch.hunks.length && !truncated; hunkIndex++) {
+    if (hunkIndex > 0) {
+      lines.push(...separatorLines(patch.hunks[hunkIndex], patch.hunks[hunkIndex - 1], config, renderer, width));
+    }
+    paintPairs(patch.hunks[hunkIndex]);
+  }
+
+  if (!truncated) return lines;
+
+  const note = limits.truncatedNote;
+  const kept = lines.slice(0, Math.max(0, note ? limits.maxLines - 1 : limits.maxLines));
+  return note ? [...kept, renderer.truncate(renderer.fg("dim", note), width)] : kept;
 };

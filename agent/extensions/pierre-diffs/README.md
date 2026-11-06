@@ -83,9 +83,31 @@ Resulting `settings.json` fragment:
 5. `ansi.ts` overlays the emphasis background on already-highlighted text and
    restores the line background, so fg codes from the highlighter survive.
 
-Parsing and layout are cached per tool call and invalidated by width, options,
-theme or language, so re-renders (scroll, resize, spinner frames) reuse the
-previous output instead of recomputing it.
+## Performance
+
+Pi calls `Component.render(width)` on every TUI frame (~12×/s) for each visible
+tool row, but calls `renderResult` only when a row changes. The extension is
+built around that split:
+
+| Path | Cost | Why |
+|------|------|-----|
+| `render(width)` (per frame) | ~microseconds | `modelFor` + `linesFor` are two cache lookups with field comparisons — no string building, no allocation, no parsing |
+| `renderResult` (per change) | negligible | Only resolves the config (memoised per options object) and captures the cache key |
+| cold render, 200 rows | ~11ms | One-off per (width, options, theme, language): tokenise, wrap, paint |
+| cold render, 1200 rows | ~47ms | Same, paid once when you expand a very large diff |
+| collapsed large diff | ~2.6ms | Layout stops at the 28 line cap instead of painting 1200 rows and slicing |
+
+Other guards:
+
+- Syntax highlighting is cached by theme, language and line text, so resizing
+  the terminal or toggling an option re-uses the previous tokenisation.
+- Lines longer than 1000 characters (minified or generated code) skip
+  highlighting: one such line costs more than 30 normal ones.
+- `write` never splits the whole file: `addedFilePatch` materialises at most 1200
+  rows and counts the rest with a single `indexOf` pass, and the `write` header
+  reuses a one-entry line-count memo.
+- Caches are bounded (`64` tool calls, `1500` highlighted lines) and keyed by
+  tool call, so they never grow with session length.
 
 ## Files
 

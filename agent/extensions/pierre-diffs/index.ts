@@ -63,14 +63,18 @@ import { renderPatch, type Palette, type Renderer } from "./render.ts";
 const SETTINGS_KEY = "pierre-diffs";
 const COLLAPSED_LINES = 28;
 const EXPANDED_LINES = 1200;
-const WRITE_ROW_LIMIT = 400;
+/** Writes materialise at most this many rows, so the render cap is the only limit. */
+const WRITE_ROW_LIMIT = EXPANDED_LINES;
 const CACHE_LIMIT = 64;
 
 /** Parsed patch plus the lines rendered for one width/option set. */
 interface RenderCache {
   source: string;
   model: ParsedPatch;
-  signature: string;
+  configKey: string;
+  paletteId: number;
+  language: string | undefined;
+  maxLines: number;
   width: number;
   lines: string[];
 }
@@ -84,6 +88,16 @@ const renderCache = new Map<string, RenderCache>();
 const paletteCache = new WeakMap<Theme, PaletteState>();
 let nextPaletteId = 1;
 let options: DiffOptions = normalizeOptions(getExtSetting(SETTINGS_KEY, undefined));
+let viewCache: { source: DiffOptions; config: DiffConfig; configKey: string } | undefined;
+
+/** Resolved config + its cache key, recomputed only when the options object changes. */
+const currentView = (): { config: DiffConfig; configKey: string } => {
+  if (viewCache?.source !== options) {
+    const config = resolveConfig(options);
+    viewCache = { source: options, config, configKey: configSignature(config) };
+  }
+  return viewCache;
+};
 
 // ── Palette ──────────────────────────────────────────────────────────────
 
@@ -105,11 +119,44 @@ const paletteFor = (theme: Theme): PaletteState => {
   return state;
 };
 
+// ── Highlighting ─────────────────────────────────────────────────────────
+
+const HIGHLIGHT_CACHE_LIMIT = 1500;
+/** Minified/generated lines cost ~0.4ms each to tokenise; pierre caps them too. */
+const HIGHLIGHT_MAX_LINE = 1000;
+const highlightCache = new Map<string, string>();
+
+/**
+ * `highlightCode` runs highlight.js per line (~25µs). Caching by theme, language
+ * and text keeps a resize or an expand toggle from re-tokenising every row.
+ */
+const highlightLine = (text: string, language: string, themeId: number): string => {
+  if (text.length > HIGHLIGHT_MAX_LINE) return text;
+
+  const key = `${themeId}\u0000${language}\u0000${text}`;
+  const cached = highlightCache.get(key);
+  if (cached !== undefined) return cached;
+
+  let line = text;
+  try {
+    line = highlightCode(text, language)[0] ?? text;
+  } catch {
+    // Unsupported language or uninitialised theme: keep the plain text.
+  }
+
+  if (highlightCache.size >= HIGHLIGHT_CACHE_LIMIT) {
+    const oldest = highlightCache.keys().next();
+    if (!oldest.done) highlightCache.delete(oldest.value);
+  }
+  highlightCache.set(key, line);
+  return line;
+};
+
 // ── Renderer ─────────────────────────────────────────────────────────────
 
 type FgToken = Parameters<Theme["fg"]>[0];
 
-const createRenderer = (theme: Theme, language: string | undefined): Renderer<Color> => {
+const createRenderer = (theme: Theme, language: string | undefined, themeId: number): Renderer<Color> => {
   const mode = getCapabilities().trueColor ? "truecolor" : "256";
   return {
     fg: (token, text) => theme.fg(token as FgToken, text),
@@ -120,15 +167,10 @@ const createRenderer = (theme: Theme, language: string | undefined): Renderer<Co
       const wrapped = wrapTextWithAnsi(text, width);
       return wrapped.length > 0 ? wrapped : [""];
     },
-    truncate: (text, width) => truncateToWidth(text, width, ""),
-    highlight: (text) => {
-      if (!language || text.trim().length === 0) return text;
-      try {
-        return highlightCode(text, language)[0] ?? text;
-      } catch {
-        return text;
-      }
-    },
+    // Ellipsis by default: a clipped line must not look like a complete one.
+    truncate: (text, width) => truncateToWidth(text, width),
+    highlight: (text) =>
+      !language || text.trim().length === 0 ? text : highlightLine(text, language, themeId),
   };
 };
 
@@ -148,31 +190,62 @@ const modelFor = (
     const oldest = renderCache.keys().next();
     if (!oldest.done) renderCache.delete(oldest.value);
   }
-  renderCache.set(toolCallId, { source, model, signature: "", width: -1, lines: [] });
+  renderCache.set(toolCallId, {
+    source,
+    model,
+    configKey: "",
+    paletteId: 0,
+    language: undefined,
+    maxLines: 0,
+    width: -1,
+    lines: [],
+  });
   return model;
 };
 
-/** Render once per (width, options, theme, language); later frames reuse the lines. */
+/**
+ * Render once per (width, options, theme, language, cap); every later frame is a
+ * cache hit. Called from `Component.render`, which pi runs on every TUI frame,
+ * so this path avoids allocating or joining strings.
+ */
 const linesFor = (
   toolCallId: string,
   model: ParsedPatch,
-  config: DiffConfig,
+  view: { config: DiffConfig; configKey: string },
   theme: Theme,
   language: string | undefined,
   width: number,
   maxLines: number,
+  truncatedNote: string | undefined,
 ): string[] => {
   const palettes = paletteFor(theme);
-  const signature = `${configSignature(config)}|${palettes.id}|${language ?? ""}|${maxLines}`;
   const cached = renderCache.get(toolCallId);
-  if (cached && cached.model === model && cached.signature === signature && cached.width === width) {
+  if (
+    cached &&
+    cached.model === model &&
+    cached.configKey === view.configKey &&
+    cached.paletteId === palettes.id &&
+    cached.language === language &&
+    cached.maxLines === maxLines &&
+    cached.width === width
+  ) {
     return cached.lines;
   }
 
-  const lines = renderPatch(model, config, createRenderer(theme, language), palettes.palette, width, {
+  const lines = renderPatch(model, view.config, createRenderer(theme, language, palettes.id), palettes.palette, width, {
     maxLines,
+    truncatedNote,
   });
-  renderCache.set(toolCallId, { source: cached?.source ?? "", model, signature, width, lines });
+  renderCache.set(toolCallId, {
+    source: cached?.source ?? "",
+    model,
+    configKey: view.configKey,
+    paletteId: palettes.id,
+    language,
+    maxLines,
+    width,
+    lines,
+  });
   return lines;
 };
 
@@ -199,6 +272,30 @@ const plainDiff = (diff: string, theme: Theme): string =>
           : theme.fg("toolDiffContext", line),
     )
     .join("\n");
+
+const HIDDEN = "\u22ef";
+
+/** Hint appended when a diff does not fit; expanding is the only way to see more. */
+const truncatedNote = (expanded: boolean, context: { keyHint(key: string, hint: string): string }): string =>
+  expanded ? `${HIDDEN} diff truncated` : `${HIDDEN} diff truncated \u00b7 ${context.keyHint("app.tools.expand", "expand")}`;
+
+let lineCount: { content: string; lines: number } | undefined;
+
+/**
+ * Line count without materialising a line array: same semantics as
+ * `addedFilePatch` (a trailing newline does not start another line).
+ */
+const addedFileLines = (content: string): number => {
+  if (lineCount?.content === content) return lineCount.lines;
+
+  let breaks = 0;
+  for (let index = content.indexOf("\n"); index !== -1; index = content.indexOf("\n", index + 1)) {
+    breaks++;
+  }
+  const lines = content.length === 0 ? 0 : breaks + (content.endsWith("\n") ? 0 : 1);
+  lineCount = { content, lines };
+  return lines;
+};
 
 /** First line of a textual tool result, or `fallback` when there is none. */
 const resultText = (content: { type: string; text?: string } | undefined, fallback: string): string =>
@@ -238,14 +335,23 @@ export default function pierreDiffs(pi: ExtensionAPI): void {
         );
       }
 
-      const config = resolveConfig(options);
-      if (!config.enabled) return new Text(plainDiff(details?.diff ?? patch, theme), 0, 0);
+      const view = currentView();
+      if (!view.config.enabled) return new Text(plainDiff(details?.diff ?? patch, theme), 0, 0);
 
       const language = getLanguageFromPath(context.args.path);
       const maxLines = expanded ? EXPANDED_LINES : COLLAPSED_LINES;
       return diffComponent((width) => {
         const model = modelFor(context.toolCallId, patch, parsePatch);
-        return linesFor(context.toolCallId, model, config, theme, language, width, maxLines);
+        return linesFor(
+          context.toolCallId,
+          model,
+          view,
+          theme,
+          language,
+          width,
+          maxLines,
+          truncatedNote(expanded, context),
+        );
       });
     },
   });
@@ -255,11 +361,11 @@ export default function pierreDiffs(pi: ExtensionAPI): void {
     ...writeBase,
 
     renderCall(args, theme) {
-      const lineCount = args.content.split("\n").length;
+      const lines = addedFileLines(args.content);
       return new Text(
         theme.fg("toolTitle", theme.bold("write ")) +
           theme.fg("accent", args.path) +
-          theme.fg("dim", ` (${lineCount} lines)`),
+          theme.fg("dim", ` (${lines} lines)`),
         0,
         0,
       );
@@ -270,18 +376,17 @@ export default function pierreDiffs(pi: ExtensionAPI): void {
         return new Text(theme.fg("error", resultText(result.content[0], "write failed")), 0, 0);
       }
 
-      const config = resolveConfig(options);
-      if (!config.enabled) return new Text(theme.fg("success", "Written"), 0, 0);
+      const view = currentView();
+      if (!view.config.enabled) return new Text(theme.fg("success", "Written"), 0, 0);
 
       const source = context.args.content;
       const language = getLanguageFromPath(context.args.path);
       const maxLines = expanded ? EXPANDED_LINES : COLLAPSED_LINES;
+      const note = truncatedNote(expanded, context);
 
       return diffComponent((width) => {
         const model = modelFor(context.toolCallId, source, (text) => addedFilePatch(text, WRITE_ROW_LIMIT));
-        const lines = linesFor(context.toolCallId, model, config, theme, language, width, maxLines);
-        const hidden = model.additions - model.hunks[0].rows.length;
-        return hidden > 0 ? [...lines, theme.fg("dim", `\u22ef ${hidden} more lines`)] : lines;
+        return linesFor(context.toolCallId, model, view, theme, language, width, maxLines, note);
       });
     },
   });

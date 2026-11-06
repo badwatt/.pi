@@ -199,21 +199,44 @@ test("hunk separators report the skipped line count", () => {
   assert.equal(strip(render(twoHunks, { separators: "none" }, 40)).length, 5);
 });
 
-test("long lines wrap or clip according to overflow", () => {
+test("long lines wrap onto continuation rows without repeating the gutter", () => {
   const long = `@@ -1,1 +1,1 @@\n-${"a".repeat(30)}\n+${"b".repeat(30)}`;
   const wrapped = strip(render(long, {}, 24));
-  const clipped = strip(render(long, { wrap: false }, 24));
 
   assert.equal(wrapped.length, 4);
+  assert.ok(wrapped[0].startsWith("1   ▎ "));
+  assert.ok(wrapped[1].startsWith("      "));
+  assert.ok(wrapped[2].startsWith("  1 ▎ "));
+  assert.ok(wrapped[3].startsWith("      "));
+  for (const line of wrapped) assert.equal(line.length, 24);
+});
+
+test("clipped lines keep the column width and end with an ellipsis", () => {
+  const long = `@@ -1,1 +1,1 @@\n-${"a".repeat(30)}\n+${"b".repeat(30)}`;
+  const clip = (text: string, width: number): string => `${splitVisible(text, Math.max(1, width - 1))[0] ?? ""}…`;
+  const clipped = strip(render(long, { wrap: false }, 24, fakeRenderer(false, { truncate: clip })));
   assert.equal(clipped.length, 2);
-  for (const line of [...wrapped, ...clipped]) assert.equal(line.length, 24);
+  for (const line of clipped) {
+    assert.equal(line.length, 24);
+    assert.ok(line.endsWith("…"));
+  }
 });
 
-test("output is capped with a note when it exceeds maxLines", () => {
-  const lines = capTest();
-  assert.deepEqual(strip(lines).slice(-1), ["⋯ 3 more diff lines"]);
-  assert.equal(lines.length, 3);
+test("layout stops at maxLines and ends with the truncation note", () => {
+  const limits = { maxLines: 3, truncatedNote: "⋯ diff truncated" };
+  const lines = renderPatch(parse(SAMPLE), config(), fakeRenderer(), PALETTE, 30, limits);
+  assert.deepEqual(strip(lines), [
+    "1 1   const a = 1;            ",
+    "2   ▎ const b = 2;            ",
+    "⋯ diff truncated",
+  ]);
 });
 
-const capTest = (): string[] =>
-  renderPatch(parse(SAMPLE), config(), fakeRenderer(), PALETTE, 30, { maxLines: 3 });
+test("no truncation note when everything fits", () => {
+  const lines = renderPatch(parse(SAMPLE), config(), fakeRenderer(), PALETTE, 30, {
+    maxLines: 50,
+    truncatedNote: "⋯ diff truncated",
+  });
+  assert.equal(lines.length, 5);
+  assert.ok(!strip(lines).some((line) => line.includes("truncated")));
+});

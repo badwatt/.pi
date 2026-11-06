@@ -21,6 +21,17 @@ test("word-alt emphasizes inserted tokens but not the space between them", () =>
   assert.equal(slice("call(a, b)", after), ",|b");
 });
 
+test("punctuation is tokenised per character, not as a run", () => {
+  const before = "    return buildDefault(options);";
+  const after = "    return buildDefault(options, { strict: true });";
+  const { before: left, after: right } = changedRanges("word-alt", before, after);
+
+  // `);` exists on both sides, only the inserted argument changed.
+  assert.deepEqual(left, []);
+  // Adjacent changed tokens merge into one continuous range.
+  assert.deepEqual(right.map(([start, end]) => after.slice(start, end)), [",", "{", "strict:", "true", "}"]);
+});
+
 test("word-alt ignores whitespace-only edits", () => {
   const { before, after } = changedRanges("word-alt", "a b", "a  b");
   assert.deepEqual(before, []);

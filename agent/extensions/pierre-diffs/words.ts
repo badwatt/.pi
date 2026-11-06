@@ -16,8 +16,10 @@ export type Range = readonly [start: number, end: number];
 const TOKEN_LIMIT = 600;
 const WHITESPACE = /^\s+$/;
 
+// Words, whitespace runs and single punctuation characters: grouping punctuation
+// would make `);` and `});` different tokens and mark the whole run as changed.
 const tokenize = (text: string, charMode: boolean): string[] =>
-  charMode ? Array.from(text) : (text.match(/\w+|\s+|[^\w\s]+/g) ?? []);
+  charMode ? Array.from(text) : (text.match(/\w+|\s+|[^\w\s]/g) ?? []);
 
 /** Longest common subsequence match flags for two token lists. */
 const matchFlags = (a: string[], b: string[]): [Uint8Array, Uint8Array] => {

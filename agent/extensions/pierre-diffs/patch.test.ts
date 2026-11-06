@@ -90,6 +90,27 @@ test("addedFilePatch on empty content has no rows", () => {
   assert.deepEqual(parsed.hunks[0].rows, []);
 });
 
+test("addedFilePatch matches split semantics for edge-case line endings", () => {
+  const cases: Array<[string, string[]]> = [
+    ["a", ["a"]],
+    ["a\n", ["a"]],
+    ["a\nb", ["a", "b"]],
+    ["a\n\n", ["a", ""]],
+    ["\n", [""]],
+    ["a\n\nb\n", ["a", "", "b"]],
+  ];
+  for (const [content, expected] of cases) {
+    const parsed = addedFilePatch(content, 100);
+    assert.deepEqual(
+      parsed.hunks[0].rows.map((row) => row.text),
+      expected,
+      `content=${JSON.stringify(content)}`,
+    );
+    assert.equal(parsed.additions, expected.length);
+    assert.equal(parsed.hunks[0].rows.at(-1)?.newNo, expected.length || undefined);
+  }
+});
+
 test("lineNumberWidth uses the widest number present", () => {
   assert.equal(lineNumberWidth(parsePatch(PATCH)), 2);
   assert.equal(lineNumberWidth(parsePatch("@@ -98,1 +99,1 @@\n-a\n+b")), 2);
