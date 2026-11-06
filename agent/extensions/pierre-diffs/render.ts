@@ -5,7 +5,8 @@
  * module stays dependency free and unit testable.
  *
  * Layout rules map 1:1 to @pierre/diffs options:
- *   diffStyle: unified | split     -> stacked rows or two columns
+ *   diffStyle: auto | unified | split -> stacked rows, two columns, or two
+ *                                      columns only when the width allows it
  *   diffIndicators: bars | classic | none
  *   lineDiffType                   -> intra-line emphasis (see words.ts)
  *   overflow: wrap | scroll        -> wrap text or clip it
@@ -22,7 +23,9 @@ const RESET_BG = "\u001b[49m";
 const BAR = "\u258e";
 const HIDDEN = "\u22ef";
 const SPLIT_DIVIDER = " \u2502 ";
-const SPLIT_MIN_WIDTH = 56;
+/** Text columns each side needs: `split` keeps a floor, `auto` asks for comfort. */
+const SPLIT_MIN_TEXT = 8;
+const SPLIT_AUTO_TEXT = 32;
 const MIN_CONTENT_WIDTH = 4;
 
 export interface Renderer<C = unknown> {
@@ -167,14 +170,20 @@ export const renderPatch = <C>(
   width: number,
   limits: RenderLimits,
 ): string[] => {
-  const split = config.style === "split" && width >= SPLIT_MIN_WIDTH;
   const numberWidth = lineNumberWidth(patch);
-  const columnWidth = split ? Math.floor((width - SPLIT_DIVIDER.length) / 2) : width;
-  const rightWidth = split ? width - columnWidth - SPLIT_DIVIDER.length : 0;
-
-  const gutterWidth = config.lineNumbers ? (split ? numberWidth : numberWidth * 2 + 1) + 1 : 0;
   const markerWidth = config.indicators === "none" ? 0 : 2;
-  const headWidth = gutterWidth + markerWidth;
+
+  // Decide the layout from the text room each column would get, not from the
+  // raw terminal width: gutters and markers eat into it depending on the diff.
+  const splitColumnWidth = Math.floor((width - SPLIT_DIVIDER.length) / 2);
+  const splitGutterWidth = config.lineNumbers ? numberWidth + 1 : 0;
+  const splitHeadWidth = splitGutterWidth + markerWidth;
+  const wanted = config.style === "auto" ? SPLIT_AUTO_TEXT : SPLIT_MIN_TEXT;
+  const split = config.style !== "unified" && splitColumnWidth - splitHeadWidth >= wanted;
+
+  const columnWidth = split ? splitColumnWidth : width;
+  const rightWidth = split ? width - splitColumnWidth - SPLIT_DIVIDER.length : 0;
+  const headWidth = split ? splitHeadWidth : (config.lineNumbers ? numberWidth * 2 + 2 : 0) + markerWidth;
   const textWidth = Math.max(MIN_CONTENT_WIDTH, columnWidth - headWidth);
   const rightTextWidth = Math.max(MIN_CONTENT_WIDTH, rightWidth - headWidth);
 

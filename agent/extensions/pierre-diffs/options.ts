@@ -35,9 +35,9 @@ export const OPTIONS = [
     key: "diffStyle",
     type: "choice",
     label: "Layout",
-    values: ["unified", "split"],
+    values: ["auto", "split", "unified"],
     fallback: "unified",
-    description: "Stacked changes or side-by-side columns",
+    description: "Auto picks split when the terminal is wide enough",
   },
   {
     key: "diffIndicators",

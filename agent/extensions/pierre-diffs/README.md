@@ -26,7 +26,7 @@ the first change.
 | Key | Values | Default | Mirrors `@pierre/diffs` |
 |-----|--------|---------|-------------------------|
 | `enabled` | `true` / `false` | `true` | — (plain coloured patch when `false`) |
-| `diffStyle` | `unified` / `split` | `unified` | `diffStyle` (stacked vs side-by-side) |
+| `diffStyle` | `auto` / `split` / `unified` | `unified` | `diffStyle` (stacked vs side-by-side) |
 | `diffIndicators` | `bars` / `classic` / `none` | `bars` | `diffIndicators` |
 | `lineDiffType` | `word-alt` / `word` / `word-line` / `char` / `none` | `word-alt` | `lineDiffType` |
 | `overflow` | `wrap` / `scroll` | `wrap` | `overflow` |
@@ -37,7 +37,11 @@ the first change.
 
 Notes:
 
-- `split` needs at least 56 columns; narrower terminals fall back to `unified`.
+- `auto` uses the split layout only when each column would still get 32 text
+  columns (≈75 terminal columns for a one-digit diff), and `unified` otherwise.
+  The check runs on every render, so resizing the terminal switches layout live.
+- `split` forces two columns and only gives up when a column would get fewer
+  than 8 text columns after gutters and markers.
 - `word-alt` skips whitespace-only edits; `word` and `word-line` mark them too.
   Lines longer than 600 tokens fall back to whole-line emphasis.
 - With `backgrounds: false` the change colours move to the text, so the syntax
@@ -52,7 +56,7 @@ Resulting `settings.json` fragment:
   "extensionSettings": {
     "pierre-diffs": {
       "enabled": true,
-      "diffStyle": "split",
+      "diffStyle": "auto",
       "diffIndicators": "bars",
       "lineDiffType": "word-alt",
       "overflow": "wrap",

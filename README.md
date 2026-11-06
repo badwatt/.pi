@@ -14,7 +14,7 @@ npm i -g @earendil-works/pi-coding-agent
 |-----------|-------------|----------|
 | [custom-footer](agent/extensions/custom-footer/) | TUI footer: model, token stats, context %, elapsed, CWD, git branch, TPS, query time | — |
 | [notifications](agent/extensions/notifications/) | Desktop notifications via OSC 777 when agent finishes. Shows response snippet as body. | `/notifications [on\|off\|status]` |
-| [pierre-diffs](agent/extensions/pierre-diffs/) | `edit`/`write` diffs in [@pierre/diffs](https://diffs.com) style: unified/split, bars/classic/none indicators, tinted lines, word-level emphasis, hunk separators | `/diffs` |
+| [pierre-diffs](agent/extensions/pierre-diffs/) | `edit`/`write` diffs in [@pierre/diffs](https://diffs.com) style: auto/split/unified, bars/classic/none indicators, tinted lines, word-level emphasis, hunk separators | `/diffs` |
 | [extension-settings](agent/utils/extension-settings/) | Shared utility module for persisting extension state in `settings.json` | — |
 
 ## Packages

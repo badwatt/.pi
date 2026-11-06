@@ -120,10 +120,21 @@ test("split layout pairs deletions with additions and spans context rows", () =>
   ]);
 });
 
-test("split falls back to unified on narrow terminals", () => {
-  const lines = strip(render(SAMPLE, { style: "split" }, 40));
-  assert.equal(lines.length, 5);
-  assert.ok(!lines[0].includes("│"));
+test("auto splits only when both columns stay comfortable", () => {
+  const wide = strip(render(SAMPLE, { style: "auto" }, 100));
+  assert.ok(wide[0].includes("│"));
+  assert.equal(wide.length, 4);
+
+  const narrow = strip(render(SAMPLE, { style: "auto" }, 74));
+  assert.ok(!narrow[0].includes("│"));
+  assert.equal(narrow.length, 5);
+});
+
+test("explicit split forces two columns down to the legibility floor", () => {
+  assert.ok(strip(render(SAMPLE, { style: "split" }, 60))[0].includes("│"));
+  const tooNarrow = strip(render(SAMPLE, { style: "split" }, 20));
+  assert.ok(!tooNarrow[0].includes("│"));
+  assert.equal(tooNarrow.length, 5);
 });
 
 test("indicators switch between bars, classic and none", () => {

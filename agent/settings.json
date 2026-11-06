@@ -23,7 +23,7 @@
     "notifications": true,
     "pierre-diffs": {
       "enabled": true,
-      "diffStyle": "unified",
+      "diffStyle": "auto",
       "diffIndicators": "bars",
       "lineDiffType": "word-alt",
       "overflow": "wrap",
