@@ -14,6 +14,7 @@ npm i -g @earendil-works/pi-coding-agent
 |-----------|-------------|----------|
 | [custom-footer](agent/extensions/custom-footer/) | TUI footer: model, token stats, context %, elapsed, CWD, git branch, TPS, query time | — |
 | [notifications](agent/extensions/notifications/) | Desktop notifications via OSC 777 when agent finishes. Shows response snippet as body. | `/notifications [on\|off\|status]` |
+| [pierre-diffs](agent/extensions/pierre-diffs/) | `edit`/`write` diffs in [@pierre/diffs](https://diffs.com) style: unified/split, bars/classic/none indicators, tinted lines, word-level emphasis, hunk separators | `/diffs` |
 | [extension-settings](agent/utils/extension-settings/) | Shared utility module for persisting extension state in `settings.json` | — |
 
 ## Packages
@@ -49,3 +50,4 @@ Persisted in [`settings.json`](agent/settings.json) under `extensionSettings`:
 | Key | Type | Default | Current | Description |
 |-----|------|---------|---------|-------------|
 | `notifications` | `boolean` | `true` | `true` | Desktop notifications enabled |
+| `pierre-diffs` | `object` | defaults | `{ diffStyle: "unified", … }` | Diff renderer options, see [README](agent/extensions/pierre-diffs/README.md) |

@@ -20,7 +20,18 @@
     "npm:pi-ollama-cloud"
   ],
   "extensionSettings": {
-    "notifications": true
+    "notifications": true,
+    "pierre-diffs": {
+      "enabled": true,
+      "diffStyle": "unified",
+      "diffIndicators": "bars",
+      "lineDiffType": "word-alt",
+      "overflow": "wrap",
+      "hunkSeparators": "line-info",
+      "lineNumbers": true,
+      "backgrounds": true,
+      "syntaxHighlight": true
+    }
   },
   "enabledModels": [
     "ollama-cloud/*",
