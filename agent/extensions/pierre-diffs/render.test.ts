@@ -192,7 +192,7 @@ test("hunk separators report the skipped line count", () => {
   const separator = (separators: DiffConfig["separators"]): string =>
     strip(render(twoHunks, { separators }, 40))[3];
 
-  assert.match(separator("line-info"), /^╭─ ⋯ 37 unchanged lines ─+╮$/);
+  assert.match(separator("line-info"), /^─+ ⋯ 37 unchanged lines ─+$/);
   assert.match(separator("line-info-basic"), /^⋯ 37 unchanged lines ─+$/);
   assert.equal(separator("simple"), "─".repeat(40));
   assert.equal(separator("metadata"), "@@ -40,1 +40,1 @@");

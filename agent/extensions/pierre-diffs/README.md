@@ -54,6 +54,11 @@ Notes:
   (~1 ms for 1200 rows) and runs per render, so resizing switches layout live.
 - `split` forces two columns and only gives up when a column would get fewer
   than 8 text columns after gutters and markers.
+- `line-info` centres the `⋯ N unchanged lines` label between rules,
+  `line-info-basic` puts it at the left edge, `simple` is a bare rule and
+  `metadata` prints the `@@` header. On the web `line-info` is a rounded pill
+  with an expander button; a single terminal row cannot be a pill, so the
+  corners are dropped instead of faking a box with only its top edge.
 - `word-alt` skips whitespace-only edits; `word` and `word-line` mark them too.
   Lines longer than 600 tokens fall back to whole-line emphasis.
 - A tool diff block gets syntax colours only when every file in it shares one

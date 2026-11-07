@@ -201,14 +201,22 @@ const separatorLines = <C>(
 
   if (config.separators === "simple") return [renderer.fg("toolDiffContext", repeatToWidth("\u2500", width))];
   if (config.separators === "line-info-basic") {
-    const padded = `${label} `;
-    const line = padded + repeatToWidth("\u2500", width - padded.length);
-    return [renderer.fg("dim", renderer.truncate(line, width))];
+    const head = `${label} `;
+    return [renderer.fg("dim", renderer.truncate(head + repeatToWidth("\u2500", width - head.length), width))];
   }
 
-  const head = `\u256d\u2500 ${label} `;
-  const line = head + repeatToWidth("\u2500", width - head.length - 1) + "\u256e";
-  return [renderer.fg("dim", renderer.truncate(line, width))];
+  // `line-info`: the web draws a rounded pill with an expander. One terminal row
+  // cannot be a pill, so it becomes the same label centred between rules instead
+  // of a box whose only surviving edges would be the top corners.
+  const padded = ` ${label} `;
+  const room = Math.max(0, width - renderer.width(padded));
+  const left = Math.floor(room / 2);
+  return [
+    renderer.fg(
+      "dim",
+      renderer.truncate(repeatToWidth("\u2500", left) + padded + repeatToWidth("\u2500", room - left), width),
+    ),
+  ];
 };
 
 /** Render a parsed patch into styled terminal lines for the given width. */
