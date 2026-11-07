@@ -327,3 +327,16 @@ test("tab-indented rows never reach the painter raw and keep the column width", 
   assert.ok(!lines.some((line) => line.includes("\t") || line.includes("\r")));
   for (const line of strip(lines)) assert.equal(line.length, 40);
 });
+
+test("the no-newline marker is painted under its row, without gutter or tint", () => {
+  const source = "@@ -1,1 +1,1 @@\n-old\n+new\n\\ No newline at end of file";
+  const stacked = strip(render(source, {}, 40));
+  assert.equal(stacked.length, 3);
+  assert.equal(stacked[2].trim(), "\\ No newline at end of file");
+  assert.equal(stacked[2].length, 40);
+  // Aligned with the code, not with the line numbers.
+  assert.ok(stacked[2].startsWith("      \\"));
+
+  const split = strip(render(source, { style: "split" }, 100));
+  assert.equal(split.filter((line) => line.includes("No newline")).length, 1);
+});

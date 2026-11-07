@@ -68,6 +68,8 @@ Notes:
   expanded to the same ceiling.
 - A tool diff block is per repository and per call. Files changed by `edit` and
   `write` are not repeated there: those already draw their own patch.
+- A `\ No newline at end of file` marker is drawn dim under the row it belongs
+  to, so a file losing or gaining its trailing newline reads correctly.
 - A change with no text to draw (a mode change, a rename, a binary file) still
   gets a block, reading `no text diff (mode, rename or binary)` instead of
   staying silent about a file the tool did touch.

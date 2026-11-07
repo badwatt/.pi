@@ -37,7 +37,7 @@ test("parsePatch tracks both line numbers", () => {
   ]);
   assert.deepEqual(hunks[1].rows, [
     { kind: "deletion", oldNo: 20, text: "gone();" },
-    { kind: "context", oldNo: 21, newNo: 21, text: "kept();" },
+    { kind: "context", oldNo: 21, newNo: 21, text: "kept();", noNewline: true },
   ]);
 });
 
@@ -186,4 +186,19 @@ test("addedFilePatch normalises tabs and keeps line numbering", () => {
       [3, "two"],
     ],
   );
+});
+
+test("parsePatch attaches the no-newline marker to the row above it", () => {
+  const parsed = parsePatch(
+    "@@ -1,2 +1,2 @@\n-old\n\\ No newline at end of file\n+new\n\\ No newline at end of file",
+  );
+  assert.deepEqual(
+    parsed.hunks[0].rows.map((row) => [row.kind, row.text, row.noNewline]),
+    [
+      ["deletion", "old", true],
+      ["addition", "new", true],
+    ],
+  );
+  // The marker outside a hunk is ignored, not a crash.
+  assert.deepEqual(parsePatch("\\ No newline at end of file").hunks, []);
 });

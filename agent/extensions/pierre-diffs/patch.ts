@@ -13,6 +13,8 @@ export interface DiffRow {
   oldNo?: number;
   newNo?: number;
   text: string;
+  /** The file does not end with a newline after this row (`\ No newline …`). */
+  noNewline?: boolean;
 }
 
 export interface DiffHunk {
@@ -105,7 +107,12 @@ export const parsePatch = (patch: string): ParsedPatch => {
       continue;
     }
     const marker = line[0];
-    if (marker === "\\") continue; // "\ No newline at end of file"
+    if (marker === "\\") {
+      // Not a row of its own: the marker belongs to the line above it.
+      const last = current.rows[current.rows.length - 1];
+      if (last) last.noNewline = true;
+      continue;
+    }
     if (marker === " ") {
       current.rows.push({ kind: "context", oldNo: oldNo++, newNo: newNo++, text: displayText(line.slice(1)) });
       continue;

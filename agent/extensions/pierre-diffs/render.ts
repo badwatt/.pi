@@ -282,12 +282,21 @@ export const renderPatch = <C>(
       : [renderer.truncate(text, contentWidth)];
     const indent = " ".repeat(headWidth);
 
-    return bodyLines.map((line, index) => {
+    const painted = bodyLines.map((line, index) => {
       const fill = Math.max(0, contentWidth - renderer.width(line));
       // Wrapped continuation rows repeat neither the number nor the marker.
       const padded = (index === 0 ? head : indent) + line + " ".repeat(fill);
       return lineBg ? padded + RESET_BG : padded;
     });
+
+    if (row.noNewline) {
+      // Annotation for the row above: no numbers, no marker column, no tint.
+      const note = renderer.fg("dim", "\\ No newline at end of file");
+      const fill = Math.max(0, contentWidth - renderer.width(note));
+      painted.push(lineBg + indent + note + " ".repeat(fill) + (lineBg ? RESET_BG : ""));
+    }
+
+    return painted;
   };
 
   const lines: string[] = [];
