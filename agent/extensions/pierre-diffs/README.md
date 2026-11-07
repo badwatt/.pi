@@ -68,6 +68,9 @@ Notes:
   expanded to the same ceiling.
 - A tool diff block is per repository and per call. Files changed by `edit` and
   `write` are not repeated there: those already draw their own patch.
+- A change with no text to draw (a mode change, a rename, a binary file) still
+  gets a block, reading `no text diff (mode, rename or binary)` instead of
+  staying silent about a file the tool did touch.
 - Diffs written as Markdown in a message (a ```` ```diff ```` fence) are **not**
   affected. Pi renders message Markdown itself and extensions only get
   `registerMarkdownTransformer`, which returns Markdown, so the pierre layout
@@ -107,7 +110,9 @@ Resulting `settings.json` fragment:
    skipped because the parent call reports them. The snapshot is written through
    a temporary index, so the worktree, `.git/index` and `HEAD` are untouched.
 3. `patch.ts` parses the unified patch into hunks with both line numbers and the
-   file each hunk belongs to.
+   file each hunk belongs to, and normalises row text the way the TUI measures
+   it: tabs become three columns and a trailing `\r` is dropped, so the padding
+   math, the intra-line ranges and the terminal agree.
 4. `words.ts` pairs deletion/addition runs and computes the changed character
    ranges (`word-alt`/`word`/`char`), using a capped LCS over tokens.
 5. `render.ts` lays the rows out (unified or two columns), then paints gutters,

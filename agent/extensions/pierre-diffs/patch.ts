@@ -39,6 +39,14 @@ const PLUS_FILE = /^\+\+\+ (.+)$/;
 
 const count = (value: string | undefined): number => (value === undefined ? 1 : Number(value));
 
+/**
+ * Row text as the TUI measures it. Pi counts a tab as three columns everywhere
+ * (`visibleWidth`, the built-in diff) and a carriage return would send the
+ * cursor back to column 0 mid-row, so both are normalised here: the intra-line
+ * ranges and the padding math then agree with what is painted.
+ */
+const displayText = (text: string): string => text.replace(/\r$/, "").replace(/\t/g, "   ");
+
 /** Strip the `a/` or `b/` prefix and the quotes git adds to unusual paths. */
 const cleanPath = (path: string): string => {
   const trimmed = path.trim();
@@ -99,17 +107,17 @@ export const parsePatch = (patch: string): ParsedPatch => {
     const marker = line[0];
     if (marker === "\\") continue; // "\ No newline at end of file"
     if (marker === " ") {
-      current.rows.push({ kind: "context", oldNo: oldNo++, newNo: newNo++, text: line.slice(1) });
+      current.rows.push({ kind: "context", oldNo: oldNo++, newNo: newNo++, text: displayText(line.slice(1)) });
       continue;
     }
     if (marker === "-") {
       deletions++;
-      current.rows.push({ kind: "deletion", oldNo: oldNo++, text: line.slice(1) });
+      current.rows.push({ kind: "deletion", oldNo: oldNo++, text: displayText(line.slice(1)) });
       continue;
     }
     if (marker === "+") {
       additions++;
-      current.rows.push({ kind: "addition", newNo: newNo++, text: line.slice(1) });
+      current.rows.push({ kind: "addition", newNo: newNo++, text: displayText(line.slice(1)) });
       continue;
     }
     current = undefined;
@@ -134,7 +142,7 @@ export const addedFilePatch = (content: string, limit: number): ParsedPatch => {
     const stop = newline === -1 || newline > end ? end : newline;
     additions++;
     if (rows.length < limit) {
-      rows.push({ kind: "addition", newNo: additions, text: content.slice(start, stop) });
+      rows.push({ kind: "addition", newNo: additions, text: displayText(content.slice(start, stop)) });
     }
     if (stop === end) break;
     start = stop + 1;

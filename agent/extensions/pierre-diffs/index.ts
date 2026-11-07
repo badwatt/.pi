@@ -77,6 +77,8 @@ interface DiffEntryData {
   files: number;
   additions: number;
   deletions: number;
+  /** git reported a change with no text to draw: a mode, a rename or a binary. */
+  textless?: boolean;
 }
 
 /**
@@ -487,14 +489,18 @@ export default function pierreDiffs(pi: ExtensionAPI): void {
     if (!patch || INLINE_DIFF_TOOLS.has(event.toolName)) return;
 
     const parsed = parsePatch(patch);
-    if (parsed.hunks.length === 0) return; // binary-only change: nothing to draw
-
     const named = new Set(parsed.hunks.map((hunk) => hunk.file).filter((file) => file !== undefined));
+    // A mode change, a rename or a binary file has no hunk: say so instead of
+    // staying silent about a file the tool did change.
+    const textless = parsed.hunks.length === 0;
+    const headers = patch.match(/^diff --git /gm)?.length ?? 0;
+
     pi.appendEntry<DiffEntryData>(DIFF_ENTRY, {
       patch,
-      files: named.size || 1,
+      files: named.size || headers || 1,
       additions: parsed.additions,
       deletions: parsed.deletions,
+      ...(textless ? { textless: true } : {}),
     });
   });
 
@@ -511,10 +517,15 @@ export default function pierreDiffs(pi: ExtensionAPI): void {
 
     const cacheKey = `entry:${entry.id}`;
     const model = modelFor(cacheKey, data.patch, parsePatch);
+    const total = `${data.files} ${data.files === 1 ? "file" : "files"}`;
     const summary = theme.fg(
       "dim",
-      `${data.files} ${data.files === 1 ? "file" : "files"} · +${data.additions} -${data.deletions}`,
+      data.textless ? total : `${total} · +${data.additions} -${data.deletions}`,
     );
+    if (data.textless) {
+      return new Text(`${summary}\n${theme.fg("dim", "no text diff (mode, rename or binary)")}`, 0, 0);
+    }
+
     // Syntax colours only when the block is one language all the way through.
     const language = sharedLanguage(model);
     const fileHeader = (file: string): string => theme.fg("accent", theme.bold(file));

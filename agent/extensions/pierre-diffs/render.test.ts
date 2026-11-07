@@ -316,3 +316,14 @@ test("explicit split ignores the row estimate", () => {
   const lines = strip(render(LONG_LINES, { style: "split" }, 100));
   assert.ok(lines[0].includes("│"));
 });
+
+test("tab-indented rows never reach the painter raw and keep the column width", () => {
+  const tabs = "@@ -1,2 +1,2 @@\n-\tif err != nil {\n+\tif err == nil {";
+  const crlf = "@@ -1,2 +1,2 @@\r\n-ctx\r\n+ctx2\r\n";
+  const lines = [...render(tabs, {}, 40), ...render(crlf, {}, 40)];
+
+  // A raw tab would render wider than pi's three-column model and a CR would
+  // send the cursor back to column 0, so neither may survive the parser.
+  assert.ok(!lines.some((line) => line.includes("\t") || line.includes("\r")));
+  for (const line of strip(lines)) assert.equal(line.length, 40);
+});

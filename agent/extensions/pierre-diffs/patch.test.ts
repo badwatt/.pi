@@ -161,3 +161,29 @@ test("parsePatch keeps the file name when a hunk ends and another starts", () =>
     ["/tmp/x.ts", "/tmp/x.ts"],
   );
 });
+
+test("parsePatch normalises row text the way the TUI measures it", () => {
+  const tabs = "@@ -1,2 +1,2 @@\n- \tif err != nil {\n+ \tif err == nil {";
+  assert.deepEqual(
+    parsePatch(tabs).hunks[0].rows.map((row) => row.text),
+    ["    if err != nil {", "    if err == nil {"],
+  );
+
+  const crlf = "@@ -1,2 +1,2 @@\r\n ctx\r\n-old\r\n+new\r\n";
+  assert.deepEqual(
+    parsePatch(crlf).hunks[0].rows.map((row) => row.text),
+    ["ctx", "old", "new"],
+  );
+});
+
+test("addedFilePatch normalises tabs and keeps line numbering", () => {
+  const parsed = addedFilePatch("one\n\tindented\ntwo\n", 10);
+  assert.deepEqual(
+    parsed.hunks[0].rows.map((row) => [row.newNo, row.text]),
+    [
+      [1, "one"],
+      [2, "   indented"],
+      [3, "two"],
+    ],
+  );
+});
