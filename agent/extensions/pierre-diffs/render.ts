@@ -53,6 +53,12 @@ export interface RenderLimits {
   maxLines: number;
   /** Shown in place of the truncated output (e.g. "⋯ diff truncated · ctrl+o"). */
   truncatedNote?: string;
+  /**
+   * File header for patches that span several files (a git diff of everything
+   * a tool changed). A changed file replaces the "unchanged lines" separator,
+   * whose counts are meaningless across files.
+   */
+  fileHeader?: (file: string) => string;
 }
 
 interface Side {
@@ -64,6 +70,10 @@ interface Pair {
   left?: Side;
   right?: Side;
 }
+
+type RangePair = { before: readonly Range[]; after: readonly Range[] };
+
+const EMPTY_RANGES: RangePair = { before: [], after: [] };
 
 const fgTokenFor = (kind: RowKind): string =>
   kind === "addition" ? "toolDiffAdded" : kind === "deletion" ? "toolDiffRemoved" : "toolDiffContext";
@@ -77,9 +87,10 @@ const markerFor = (kind: RowKind, indicators: DiffConfig["indicators"]): string 
 /**
  * Pair deletion and addition runs row by row (pierre's split alignment).
  * Flattening a pair list reproduces the original unified row order, so both
- * layouts share this single pass.
+ * layouts share this single pass. `ranges` is injected so the layout estimate
+ * can reuse the pairing without paying for the intra-line diff.
  */
-const pairRows = (rows: readonly DiffRow[], lineDiff: DiffConfig["lineDiff"]): Pair[] => {
+const pairRows = (rows: readonly DiffRow[], ranges: (removed: DiffRow, added: DiffRow) => RangePair): Pair[] => {
   const pairs: Pair[] = [];
   let index = 0;
 
@@ -94,11 +105,10 @@ const pairRows = (rows: readonly DiffRow[], lineDiff: DiffConfig["lineDiff"]): P
     for (let offset = 0; offset < height; offset++) {
       const removed = deletions[offset];
       const added = additions[offset];
-      const ranges =
-        removed && added ? changedRanges(lineDiff, removed.text, added.text) : { before: [], after: [] };
+      const changed = removed && added ? ranges(removed, added) : EMPTY_RANGES;
       pairs.push({
-        left: removed && { row: removed, ranges: ranges.before },
-        right: added && { row: added, ranges: ranges.after },
+        left: removed && { row: removed, ranges: changed.before },
+        right: added && { row: added, ranges: changed.after },
       });
     }
   };
@@ -119,6 +129,51 @@ const pairRows = (rows: readonly DiffRow[], lineDiff: DiffConfig["lineDiff"]): P
   }
 
   return pairs;
+};
+
+/** Wrapped rows one line needs; code is monospace, so length is a fair proxy. */
+const heightOf = (text: string, textWidth: number): number =>
+  Math.max(1, Math.ceil(text.length / Math.max(1, textWidth)));
+
+interface LayoutRows {
+  stacked: number;
+  split: number;
+}
+
+/**
+ * Wrapped rows both candidate layouts need, measured in one pass over the pairs
+ * (the intra-line diff is skipped: only text lengths matter here).
+ */
+const layoutRows = (
+  patch: ParsedPatch,
+  stackedWidth: number,
+  leftWidth: number,
+  rightWidth: number,
+): LayoutRows => {
+  let stacked = 0;
+  let split = 0;
+
+  for (const hunk of patch.hunks) {
+    for (const pair of pairRows(hunk.rows, () => EMPTY_RANGES)) {
+      const left = pair.left?.row.text;
+      const right = pair.right?.row.text;
+
+      if (left !== undefined) stacked += heightOf(left, stackedWidth);
+      if (right !== undefined) stacked += heightOf(right, stackedWidth);
+
+      const leftRows = left === undefined ? 0 : heightOf(left, leftWidth);
+      // A context row has no right side of its own, but it spans both columns.
+      const rightRows =
+        right !== undefined
+          ? heightOf(right, rightWidth)
+          : left === undefined
+            ? 0
+            : heightOf(left, rightWidth);
+      split += Math.max(leftRows, rightRows);
+    }
+  }
+
+  return { stacked, split };
 };
 
 const repeatToWidth = (glyph: string, width: number): string => glyph.repeat(Math.max(0, width));
@@ -168,17 +223,30 @@ export const renderPatch = <C>(
   const numberWidth = lineNumberWidth(patch);
   const markerWidth = config.indicators === "none" ? 0 : 2;
 
-  // Decide the layout from the text room each column would get, not from the
-  // raw terminal width: gutters and markers eat into it depending on the diff.
+  // Gutters and markers eat into the width depending on the diff, so both
+  // layouts are measured in text columns. `auto` then picks the layout that
+  // shows the diff in fewer wrapped rows: two narrow columns win on paired
+  // changes, but lose as soon as the lines only fit in the wide one.
+  const unifiedHeadWidth = (config.lineNumbers ? numberWidth * 2 + 2 : 0) + markerWidth;
   const splitColumnWidth = Math.floor((width - SPLIT_DIVIDER.length) / 2);
-  const splitGutterWidth = config.lineNumbers ? numberWidth + 1 : 0;
-  const splitHeadWidth = splitGutterWidth + markerWidth;
-  const wanted = config.style === "auto" ? SPLIT_AUTO_TEXT : SPLIT_MIN_TEXT;
-  const split = config.style !== "unified" && splitColumnWidth - splitHeadWidth >= wanted;
+  const splitHeadWidth = (config.lineNumbers ? numberWidth + 1 : 0) + markerWidth;
+  const splitTextWidth = splitColumnWidth - splitHeadWidth;
+  const splitRightTextWidth = width - splitColumnWidth - SPLIT_DIVIDER.length - splitHeadWidth;
+
+  const roomy = splitTextWidth >= SPLIT_AUTO_TEXT;
+  const rows =
+    config.style === "auto" && roomy
+      ? layoutRows(patch, width - unifiedHeadWidth, splitTextWidth, splitRightTextWidth)
+      : undefined;
+
+  const split =
+    config.style === "split"
+      ? splitTextWidth >= SPLIT_MIN_TEXT
+      : rows !== undefined && rows.split < rows.stacked;
 
   const columnWidth = split ? splitColumnWidth : width;
   const rightWidth = split ? width - splitColumnWidth - SPLIT_DIVIDER.length : 0;
-  const headWidth = split ? splitHeadWidth : (config.lineNumbers ? numberWidth * 2 + 2 : 0) + markerWidth;
+  const headWidth = split ? splitHeadWidth : unifiedHeadWidth;
   const textWidth = Math.max(MIN_CONTENT_WIDTH, columnWidth - headWidth);
   const rightTextWidth = Math.max(MIN_CONTENT_WIDTH, rightWidth - headWidth);
 
@@ -224,11 +292,14 @@ export const renderPatch = <C>(
 
   const lines: string[] = [];
   let truncated = false;
+  let paintedFile: string | undefined;
 
   // Layout stops at the cap instead of painting the whole diff and slicing it.
   // A 1200 row diff costs one frame instead of ~60ms of discarded work.
   const paintPairs = (hunk: DiffHunk): void => {
-    for (const pair of pairRows(hunk.rows, config.lineDiff)) {
+    for (const pair of pairRows(hunk.rows, (removed, added) =>
+      changedRanges(config.lineDiff, removed.text, added.text),
+    )) {
       if (lines.length >= limits.maxLines) {
         truncated = true;
         return;
@@ -255,10 +326,19 @@ export const renderPatch = <C>(
   };
 
   for (let hunkIndex = 0; hunkIndex < patch.hunks.length && !truncated; hunkIndex++) {
-    if (hunkIndex > 0) {
-      lines.push(...separatorLines(patch.hunks[hunkIndex], patch.hunks[hunkIndex - 1], config, renderer, width));
+    const hunk = patch.hunks[hunkIndex];
+    const file = hunk.file;
+
+    if (file !== undefined && file !== paintedFile) {
+      paintedFile = file;
+      if (limits.fileHeader) {
+        if (lines.length > 0) lines.push("");
+        lines.push(limits.fileHeader(file));
+      }
+    } else if (hunkIndex > 0) {
+      lines.push(...separatorLines(hunk, patch.hunks[hunkIndex - 1], config, renderer, width));
     }
-    paintPairs(patch.hunks[hunkIndex]);
+    paintPairs(hunk);
   }
 
   if (!truncated) return lines;

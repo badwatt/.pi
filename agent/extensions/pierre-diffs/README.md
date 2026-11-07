@@ -1,9 +1,16 @@
 # pierre-diffs
 
-Diff rendering for `edit` and `write` results in the visual language of
-[`@pierre/diffs`](https://diffs.com) — stacked or split layout, change
-indicators, tinted lines, line number gutters, word-level emphasis and hunk
-separators.
+Diff rendering in the visual language of [`@pierre/diffs`](https://diffs.com) —
+stacked or split layout, change indicators, tinted lines, line number gutters,
+word-level emphasis and hunk separators.
+
+Two sources feed it:
+
+- **`edit` and `write`** are re-registered, so their patch is drawn inside the
+tool row (the built-in renderer is what this replaces).
+- **Anything else that changes files** — `bash` running a python heredoc, `sed`,
+a formatter, `ctx_edit`, an MCP tool — gets a diff block appended to the
+transcript after the tool result, built from a git snapshot of the worktree.
 
 **This is a native port, not a wrapper.** `@pierre/diffs` renders HTML into
 shadow DOM with CSS grid, which a terminal cannot do. What is ported is its
@@ -26,6 +33,7 @@ the first change.
 | Key | Values | Default | Mirrors `@pierre/diffs` |
 |-----|--------|---------|-------------------------|
 | `enabled` | `true` / `false` | `true` | — (plain coloured patch when `false`) |
+| `toolDiffs` | `true` / `false` | `true` | — (diff files changed by any tool, not just `edit`/`write`) |
 | `diffStyle` | `auto` / `split` / `unified` | `unified` | `diffStyle` (stacked vs side-by-side) |
 | `diffIndicators` | `bars` / `classic` / `none` | `bars` | `diffIndicators` |
 | `lineDiffType` | `word-alt` / `word` / `word-line` / `char` / `none` | `word-alt` | `lineDiffType` |
@@ -37,17 +45,31 @@ the first change.
 
 Notes:
 
-- `auto` uses the split layout only when each column would still get 32 text
-  columns (≈75 terminal columns for a one-digit diff), and `unified` otherwise.
-  The check runs on every render, so resizing the terminal switches layout live.
+- `auto` picks split only when both columns keep ≥32 text columns **and** the
+  two columns need fewer wrapped rows than one column; a tie keeps the single
+  column, which is the simpler read. Rows are counted with the real line
+  lengths, so a diff whose lines only fit the wide column stays stacked instead
+  of wrapping twice, while a diff that fits two columns earns the side-by-side
+  view however wide the terminal is. The estimate is one pass over the rows
+  (~1 ms for 1200 rows) and runs per render, so resizing switches layout live.
 - `split` forces two columns and only gives up when a column would get fewer
   than 8 text columns after gutters and markers.
 - `word-alt` skips whitespace-only edits; `word` and `word-line` mark them too.
   Lines longer than 600 tokens fall back to whole-line emphasis.
+- A tool diff block gets syntax colours only when every file in it shares one
+  language; a mixed patch stays in change colours rather than colouring half
+  the block with the wrong grammar.
 - With `backgrounds: false` the change colours move to the text, so the syntax
   palette is dropped on changed lines to keep red/green legible.
 - Long diffs are capped at 28 lines collapsed (`ctrl+o` expands) and 1200 lines
-  expanded, with a `⋯ n more diff lines` note.
+  expanded, ending in a `⋯ diff truncated · ctrl+o` note (just the first half of
+  it once expanded).
+- A tool diff block is per repository and per call. Files changed by `edit` and
+  `write` are not repeated there: those already draw their own patch.
+- Diffs written as Markdown in a message (a ```` ```diff ```` fence) are **not**
+  affected. Pi renders message Markdown itself and extensions only get
+  `registerMarkdownTransformer`, which returns Markdown, so the pierre layout
+  cannot be injected there.
 
 Resulting `settings.json` fragment:
 
@@ -56,6 +78,7 @@ Resulting `settings.json` fragment:
   "extensionSettings": {
     "pierre-diffs": {
       "enabled": true,
+      "toolDiffs": true,
       "diffStyle": "auto",
       "diffIndicators": "bars",
       "lineDiffType": "word-alt",
@@ -75,13 +98,41 @@ Resulting `settings.json` fragment:
    only `renderCall`/`renderResult` (execution, schemas and prompt metadata are
    inherited). `edit` renders `details.patch`; `write` renders the new file as an
    all-additions diff.
-2. `patch.ts` parses the unified patch into hunks with both line numbers.
-3. `words.ts` pairs deletion/addition runs and computes the changed character
+2. `snapshot.ts` watches the worktree for every other tool: `tool_call` makes
+   sure a snapshot exists, `tool_result` takes another one, asks git for the
+   patch between the two trees and appends a `pierre-diff` custom entry (which
+   does not reach the model). Read-only tools are skipped; nested calls are
+   skipped because the parent call reports them. The snapshot is written through
+   a temporary index, so the worktree, `.git/index` and `HEAD` are untouched.
+3. `patch.ts` parses the unified patch into hunks with both line numbers and the
+   file each hunk belongs to.
+4. `words.ts` pairs deletion/addition runs and computes the changed character
    ranges (`word-alt`/`word`/`char`), using a capped LCS over tokens.
-4. `render.ts` lays the rows out (unified or two columns), then paints gutters,
-   markers, line backgrounds, syntax colours and emphasis for a given width.
-5. `ansi.ts` overlays the emphasis background on already-highlighted text and
+5. `render.ts` lays the rows out (unified or two columns), then paints gutters,
+   markers, line backgrounds, syntax colours and emphasis for a given width. A
+   multi-file patch gets one header per file and no cross-file hunk separator,
+   whose "unchanged lines" count would be meaningless.
+6. `ansi.ts` overlays the emphasis background on already-highlighted text and
    restores the line background, so fg codes from the highlighter survive.
+
+### What the worktree watcher cannot see
+
+- **Only git repositories.** Outside one there is no diff; the tool output is
+  shown as usual. A change made in another repository than the session's (after
+  a `cd`) is not snapshotted either. Whether a directory is a worktree is
+  probed once per session, so a `git init` mid-session needs `/reload`. The
+  snapshot itself needs a POSIX `env` binary to point git at the temporary
+  index.
+- **Parallel tool calls.** Changes are reported once, but with two writes in
+  flight they may be attributed to the call that finished first.
+- **Binary-only changes.** `git` reports them without hunks, so nothing is
+  drawn.
+- **Cost.** One `git add -A` over the dirty files after each watched call:
+  4–11 ms on the repositories measured here, bounded by a 5 s timeout. A
+  repository that hits that timeout is left unwatched for the rest of the
+  session (Esc does not count as a timeout). The snapshot index lives in the
+  temp directory and is reused across calls, so only files whose stat data
+  changed are re-read.
 
 ## Performance
 
@@ -96,6 +147,8 @@ built around that split:
 | cold render, 200 rows | ~11ms | One-off per (width, options, theme, language): tokenise, wrap, paint |
 | cold render, 1200 rows | ~47ms | Same, paid once when you expand a very large diff |
 | collapsed large diff | ~2.6ms | Layout stops at the 28 line cap instead of painting 1200 rows and slicing |
+| worktree snapshot | 4–11ms per watched call | One `git add -A` over the dirty files through a warm temporary index |
+| `auto` layout estimate | ~1ms per 1200 rows | One arithmetic pass over the pairs, once per cached render |
 
 Other guards:
 
@@ -115,7 +168,8 @@ Other guards:
 |------|---------|
 | `index.ts` | Extension wiring: tool renderers, caches, palette, `/diffs` command |
 | `options.ts` | Option schema (defaults, validation, settings list) + typed config |
-| `patch.ts` | Unified diff parser, added-file model, gutter width |
+| `patch.ts` | Unified diff parser (both line numbers, file names), added-file model, gutter width |
+| `snapshot.ts` | Git worktree snapshots + tree-to-tree patch for non-`edit` tools |
 | `words.ts` | Intra-line diff ranges (LCS over tokens) |
 | `ansi.ts` | Background overlay over highlighted text |
 | `render.ts` | Layout + painting. No Pi imports, fully unit tested |

@@ -240,3 +240,79 @@ test("no truncation note when everything fits", () => {
   assert.equal(lines.length, 5);
   assert.ok(!strip(lines).some((line) => line.includes("truncated")));
 });
+
+const MULTI_FILE = [
+  "diff --git a/a.ts b/a.ts",
+  "--- a/a.ts",
+  "+++ b/a.ts",
+  "@@ -1,1 +1,1 @@",
+  "-a",
+  "+A",
+  "diff --git a/b.ts b/b.ts",
+  "--- a/b.ts",
+  "+++ b/b.ts",
+  "@@ -1,1 +1,1 @@",
+  "-b",
+  "+B",
+].join("\n");
+
+const withFiles = (source: string, width = 40): string[] =>
+  strip(
+    renderPatch(parse(source), config(), fakeRenderer(), PALETTE, width, {
+      maxLines: 200,
+      fileHeader: (file) => `#${file}`,
+    }),
+  );
+
+test("multi-file patches get one header per file instead of cross-file separators", () => {
+  const lines = withFiles(MULTI_FILE);
+  assert.equal(lines[0], "#a.ts");
+  assert.equal(lines.filter((line) => line.startsWith("#")).length, 2);
+  assert.ok(lines.includes("#b.ts"));
+  assert.ok(!lines.some((line) => line.includes("unchanged")));
+  // A blank row separates the files, so a stacked view does not run together.
+  assert.equal(lines[lines.indexOf("#b.ts") - 1], "");
+});
+
+test("a second hunk of the same file keeps the skipped-lines separator", () => {
+  const twoHunks = "--- a/x.ts\n+++ b/x.ts\n@@ -1,1 +1,1 @@\n-a\n+A\n@@ -40,1 +40,1 @@\n-b\n+B";
+  const lines = withFiles(twoHunks);
+  assert.deepEqual(
+    lines.filter((line) => line.startsWith("#")),
+    ["#x.ts"],
+  );
+  assert.ok(lines.some((line) => line.includes("38 unchanged lines")));
+});
+
+/** 3 context rows and one 80-column replacement: fits one column, wraps in two. */
+const LONG_LINES = [
+  "@@ -1,3 +1,3 @@",
+  " short one",
+  `-${"a".repeat(80)}`,
+  `+${"b".repeat(80)}`,
+  " short two",
+].join("\n");
+
+/** Ten short replacement pairs: split halves the rows. */
+const MANY_PAIRS = [
+  "@@ -1,11 +1,11 @@",
+  " context",
+  ...Array.from({ length: 10 }, (_, i) => `-old ${i}\n+new ${i}`).join("\n").split("\n"),
+].join("\n");
+
+test("auto keeps one column when the lines only fit in the wide one", () => {
+  const lines = strip(render(LONG_LINES, { style: "auto" }, 100));
+  assert.ok(!lines.some((line) => line.includes("│")), "expected a stacked layout");
+  assert.equal(lines.length, 4);
+});
+
+test("auto splits when two columns halve the wrapped rows", () => {
+  const lines = strip(render(MANY_PAIRS, { style: "auto" }, 100));
+  assert.ok(lines[0].includes("│"));
+  assert.equal(lines.length, 11);
+});
+
+test("explicit split ignores the row estimate", () => {
+  const lines = strip(render(LONG_LINES, { style: "split" }, 100));
+  assert.ok(lines[0].includes("│"));
+});

@@ -32,12 +32,19 @@ export const OPTIONS = [
     description: "Render edit/write diffs in pierre style (false = plain patch)",
   },
   {
+    key: "toolDiffs",
+    type: "boolean",
+    label: "Tool diffs",
+    fallback: true,
+    description: "Diff the files a tool changed (bash, python, MCP, …), not just edit/write",
+  },
+  {
     key: "diffStyle",
     type: "choice",
     label: "Layout",
     values: ["auto", "split", "unified"],
     fallback: "unified",
-    description: "Auto picks split when the terminal is wide enough",
+    description: "Auto: two columns only when they need fewer wrapped rows",
   },
   {
     key: "diffIndicators",

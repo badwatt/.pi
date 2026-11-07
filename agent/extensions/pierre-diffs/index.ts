@@ -59,6 +59,7 @@ import {
 } from "./options.ts";
 import { addedFilePatch, parsePatch, type ParsedPatch } from "./patch.ts";
 import { renderPatch, type Palette, type Renderer } from "./render.ts";
+import { createSnapshotter } from "./snapshot.ts";
 
 const SETTINGS_KEY = "pierre-diffs";
 const COLLAPSED_LINES = 28;
@@ -66,6 +67,46 @@ const EXPANDED_LINES = 1200;
 /** Writes materialise at most this many rows, so the render cap is the only limit. */
 const WRITE_ROW_LIMIT = EXPANDED_LINES;
 const CACHE_LIMIT = 64;
+/** Custom entry type for a diff of files changed by a tool the extension does not own. */
+const DIFF_ENTRY = "pierre-diff";
+
+interface DiffEntryData {
+  patch: string;
+  files: number;
+  additions: number;
+  deletions: number;
+}
+
+/**
+ * Tools that cannot change files. Everything else is snapshotted, because a
+ * shell command, a formatter or an MCP tool can rewrite the worktree.
+ */
+const READ_ONLY_TOOLS = new Set([
+  "read",
+  "grep",
+  "find",
+  "ls",
+  "glob",
+  "ctx_read",
+  "ctx_grep",
+  "ctx_find",
+  "ctx_ls",
+  "ctx_glob",
+  "ctx_search",
+  "ctx_compose",
+  "ctx_expand",
+  "ctx_tree",
+  "ctx_callgraph",
+  "ctx_discover_tools",
+  "ctx_session",
+  "lean_ctx",
+  "ollama_web_search",
+  "ollama_web_fetch",
+  "todo",
+  "notify",
+]);
+/** Rendered inside their own tool row, so they must not also append an entry. */
+const INLINE_DIFF_TOOLS = new Set(["edit", "write"]);
 
 /** Parsed patch plus the lines rendered for one width/option set. */
 interface RenderCache {
@@ -76,6 +117,7 @@ interface RenderCache {
   language: string | undefined;
   maxLines: number;
   width: number;
+  fileHeader: RenderOptions["fileHeader"];
   lines: string[];
 }
 
@@ -198,10 +240,17 @@ const modelFor = (
     language: undefined,
     maxLines: 0,
     width: -1,
+    fileHeader: undefined,
     lines: [],
   });
   return model;
 };
+
+/** Everything `linesFor` needs beyond the model, the width and the config. */
+interface RenderOptions {
+  note?: string;
+  fileHeader?: (file: string) => string;
+}
 
 /**
  * Render once per (width, options, theme, language, cap); every later frame is a
@@ -216,7 +265,7 @@ const linesFor = (
   language: string | undefined,
   width: number,
   maxLines: number,
-  truncatedNote: string | undefined,
+  options: RenderOptions,
 ): string[] => {
   const palettes = paletteFor(theme);
   const cached = renderCache.get(toolCallId);
@@ -227,14 +276,16 @@ const linesFor = (
     cached.paletteId === palettes.id &&
     cached.language === language &&
     cached.maxLines === maxLines &&
-    cached.width === width
+    cached.width === width &&
+    cached.fileHeader === options.fileHeader
   ) {
     return cached.lines;
   }
 
   const lines = renderPatch(model, view.config, createRenderer(theme, language, palettes.id), palettes.palette, width, {
     maxLines,
-    truncatedNote,
+    truncatedNote: options.note,
+    fileHeader: options.fileHeader,
   });
   renderCache.set(toolCallId, {
     source: cached?.source ?? "",
@@ -244,6 +295,7 @@ const linesFor = (
     language,
     maxLines,
     width,
+    fileHeader: options.fileHeader,
     lines,
   });
   return lines;
@@ -301,6 +353,23 @@ const addedFileLines = (content: string): number => {
 const resultText = (content: { type: string; text?: string } | undefined, fallback: string): string =>
   content?.type === "text" && content.text ? content.text.split("\n")[0] : fallback;
 
+/**
+ * One language for a whole block only when every file in it agrees: a diff that
+ * spans `README.md` and `index.ts` has no single palette, and guessing one would
+ * colour half the block wrong.
+ */
+const sharedLanguage = (patch: ParsedPatch): string | undefined => {
+  let shared: string | undefined;
+  for (const hunk of patch.hunks) {
+    if (hunk.file === undefined) return undefined;
+    const language = getLanguageFromPath(hunk.file);
+    if (language === undefined) return undefined;
+    if (shared === undefined) shared = language;
+    else if (shared !== language) return undefined;
+  }
+  return shared;
+};
+
 // ── Extension entry ───────────────────────────────────────────────────────
 
 export default function pierreDiffs(pi: ExtensionAPI): void {
@@ -350,7 +419,7 @@ export default function pierreDiffs(pi: ExtensionAPI): void {
           language,
           width,
           maxLines,
-          truncatedNote(expanded, context),
+          { note: truncatedNote(expanded, context) },
         );
       });
     },
@@ -386,9 +455,70 @@ export default function pierreDiffs(pi: ExtensionAPI): void {
 
       return diffComponent((width) => {
         const model = modelFor(context.toolCallId, source, (text) => addedFilePatch(text, WRITE_ROW_LIMIT));
-        return linesFor(context.toolCallId, model, view, theme, language, width, maxLines, note);
+        return linesFor(context.toolCallId, model, view, theme, language, width, maxLines, { note });
       });
     },
+  });
+
+  // ── diffs for tools the extension does not own ──────────────────────────
+  // A tool can rewrite the worktree without going through edit/write: python
+  // heredocs, sed, formatters, MCP tools. The worktree is snapshotted around
+  // every such call and the result becomes its own block in the transcript, so
+  // the change is visible wherever it came from.
+  const snapshots = createSnapshotter((command, args, execOptions) => pi.exec(command, args, execOptions));
+
+  const watched = (event: { toolName: string; parentToolCallId?: string }): boolean =>
+    options.toolDiffs && !event.parentToolCallId && !READ_ONLY_TOOLS.has(event.toolName);
+
+  pi.on("tool_call", async (event, ctx) => {
+    if (!watched(event)) return;
+    await snapshots.prime(ctx.cwd, ctx.signal);
+  });
+
+  pi.on("tool_result", async (event, ctx) => {
+    if (!watched(event)) return;
+    const patch = await snapshots.advance(ctx.cwd, ctx.signal);
+    // edit/write already draw their patch inside the tool row.
+    if (!patch || INLINE_DIFF_TOOLS.has(event.toolName)) return;
+
+    const parsed = parsePatch(patch);
+    if (parsed.hunks.length === 0) return; // binary-only change: nothing to draw
+
+    const named = new Set(parsed.hunks.map((hunk) => hunk.file).filter((file) => file !== undefined));
+    pi.appendEntry<DiffEntryData>(DIFF_ENTRY, {
+      patch,
+      files: named.size || 1,
+      additions: parsed.additions,
+      deletions: parsed.deletions,
+    });
+  });
+
+  pi.on("session_shutdown", async () => {
+    await snapshots.dispose();
+  });
+
+  pi.registerEntryRenderer<DiffEntryData>(DIFF_ENTRY, (entry, { expanded, keyHint }, theme) => {
+    const data = entry.data;
+    if (!data?.patch) return new Text("", 0, 0);
+
+    const view = currentView();
+    if (!view.config.enabled) return new Text(plainDiff(data.patch, theme), 0, 0);
+
+    const cacheKey = `entry:${entry.id}`;
+    const maxLines = expanded ? EXPANDED_LINES : COLLAPSED_LINES;
+    const model = modelFor(cacheKey, data.patch, parsePatch);
+    const summary = theme.fg(
+      "dim",
+      `${data.files} ${data.files === 1 ? "file" : "files"} · +${data.additions} -${data.deletions}`,
+    );
+    // Syntax colours only when the block is one language all the way through.
+    const language = sharedLanguage(model);
+    const fileHeader = (file: string): string => theme.fg("accent", theme.bold(file));
+
+    return diffComponent((width) => {
+      const options = { note: truncatedNote(expanded, { keyHint }), fileHeader };
+      return [summary, ...linesFor(cacheKey, model, view, theme, language, width, maxLines, options)];
+    });
   });
 
   // ── /diffs ───────────────────────────────────────────────────────────────
@@ -421,7 +551,10 @@ export default function pierreDiffs(pi: ExtensionAPI): void {
           Math.min(items.length + 3, 16),
           getSettingsListTheme(),
           (id, value) => {
-            options = normalizeOptions({ ...options, [id]: parseValue(id as OptionKey, value) });
+            const next = normalizeOptions({ ...options, [id]: parseValue(id as OptionKey, value) });
+            // Changes made while the watcher was off are not this call's diff.
+            if (!options.toolDiffs && next.toolDiffs) void snapshots.reset();
+            options = next;
             setExtSetting(SETTINGS_KEY, options);
             dirty = true;
             tui.requestRender();

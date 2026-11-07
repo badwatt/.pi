@@ -116,3 +116,48 @@ test("lineNumberWidth uses the widest number present", () => {
   assert.equal(lineNumberWidth(parsePatch("@@ -98,1 +99,1 @@\n-a\n+b")), 2);
   assert.equal(lineNumberWidth({ hunks: [], additions: 0, deletions: 0 }), 1);
 });
+
+test("parsePatch names the file of each hunk in a git diff", () => {
+  const multi = [
+    "diff --git a/a.ts b/a.ts",
+    "index 1111111..2222222 100644",
+    "--- a/a.ts",
+    "+++ b/a.ts",
+    "@@ -1,1 +1,1 @@",
+    "-a",
+    "+A",
+    "diff --git a/dir/b.ts b/dir/b.ts",
+    "new file mode 100644",
+    "--- /dev/null",
+    "+++ b/dir/b.ts",
+    "@@ -0,0 +1,2 @@",
+    "+x",
+    "+y",
+  ].join("\n");
+
+  assert.deepEqual(
+    parsePatch(multi).hunks.map((hunk) => hunk.file),
+    ["a.ts", "dir/b.ts"],
+  );
+});
+
+test("parsePatch names a deleted file from its --- header", () => {
+  const gone = [
+    "diff --git a/old.ts b/old.ts",
+    "deleted file mode 100644",
+    "--- a/old.ts",
+    "+++ /dev/null",
+    "@@ -1,1 +0,0 @@",
+    "-bye",
+  ].join("\n");
+
+  assert.equal(parsePatch(gone).hunks[0].file, "old.ts");
+});
+
+test("parsePatch keeps the file name when a hunk ends and another starts", () => {
+  const twoHunks = "--- /tmp/x.ts\n+++ /tmp/x.ts\n@@ -1,1 +1,1 @@\n-a\n+A\n@@ -9,1 +9,1 @@\n-b\n+B";
+  assert.deepEqual(
+    parsePatch(twoHunks).hunks.map((hunk) => hunk.file),
+    ["/tmp/x.ts", "/tmp/x.ts"],
+  );
+});

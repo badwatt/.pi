@@ -16,6 +16,8 @@ export interface DiffRow {
 }
 
 export interface DiffHunk {
+  /** Path from the file header, when the patch names one (git diffs do). */
+  file?: string;
   oldStart: number;
   oldCount: number;
   newStart: number;
@@ -31,13 +33,31 @@ export interface ParsedPatch {
 }
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
+/** `--- a/x` / `+++ b/x`: the file a hunk belongs to (unambiguous with spaces). */
+const MINUS_FILE = /^--- (.+)$/;
+const PLUS_FILE = /^\+\+\+ (.+)$/;
 
 const count = (value: string | undefined): number => (value === undefined ? 1 : Number(value));
 
-/** Parse a unified diff into hunks. Unrelated leading/trailing lines are ignored. */
+/** Strip the `a/` or `b/` prefix and the quotes git adds to unusual paths. */
+const cleanPath = (path: string): string => {
+  const trimmed = path.trim();
+  const unquoted = trimmed.startsWith('"') && trimmed.endsWith('"') ? trimmed.slice(1, -1) : trimmed;
+  return unquoted.replace(/^[ab]\//, "");
+};
+
+/**
+ * Parse a unified diff into hunks. Unrelated leading/trailing lines are ignored.
+ *
+ * Hunk boundaries follow the diff markers, not the `@@` counts: a patch that
+ * spans several files must separate them with a non-diff line (`diff --git`),
+ * which git always emits. Without one, the next `---` reads as a deletion row.
+ */
 export const parsePatch = (patch: string): ParsedPatch => {
   const hunks: DiffHunk[] = [];
   let current: DiffHunk | undefined;
+  let file: string | undefined;
+  let minusFile: string | undefined;
   let oldNo = 0;
   let newNo = 0;
   let additions = 0;
@@ -47,6 +67,7 @@ export const parsePatch = (patch: string): ParsedPatch => {
     const header = HUNK_HEADER.exec(line);
     if (header) {
       current = {
+        file,
         oldStart: Number(header[1]),
         oldCount: count(header[2]),
         newStart: Number(header[3]),
@@ -60,9 +81,21 @@ export const parsePatch = (patch: string): ParsedPatch => {
       continue;
     }
 
-    // Anything before the first hunk is a file header; anything after a
-    // non-diff line ends the hunk.
-    if (!current) continue;
+    // Anything outside a hunk is a file header; a line that is not a diff
+    // marker ends the hunk.
+    if (!current) {
+      const minus = MINUS_FILE.exec(line);
+      if (minus) {
+        minusFile = cleanPath(minus[1]);
+        continue;
+      }
+      const plus = PLUS_FILE.exec(line);
+      if (plus) {
+        // `+++ /dev/null` is a deleted file: it keeps the name from `---`.
+        file = plus[1].trim() === "/dev/null" ? minusFile : cleanPath(plus[1]);
+      }
+      continue;
+    }
     const marker = line[0];
     if (marker === "\\") continue; // "\ No newline at end of file"
     if (marker === " ") {
