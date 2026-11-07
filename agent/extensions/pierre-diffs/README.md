@@ -61,9 +61,11 @@ Notes:
   the block with the wrong grammar.
 - With `backgrounds: false` the change colours move to the text, so the syntax
   palette is dropped on changed lines to keep red/green legible.
-- Long diffs are capped at 28 lines collapsed (`ctrl+o` expands) and 1200 lines
-  expanded, ending in a `⋯ diff truncated · ctrl+o` note (just the first half of
-  it once expanded).
+- A diff is never collapsed: `edit` and tool diff blocks show the whole patch up
+  to a 1200-row ceiling, which is where a `⋯ diff truncated` row can appear
+  (Pi's own `edit` renderer has no ceiling at all). `write` is the exception: it
+  previews 28 lines of a whole file, with `⋯ more diff lines · ctrl+o` until
+  expanded to the same ceiling.
 - A tool diff block is per repository and per call. Files changed by `edit` and
   `write` are not repeated there: those already draw their own patch.
 - Diffs written as Markdown in a message (a ```` ```diff ```` fence) are **not**
@@ -146,7 +148,7 @@ built around that split:
 | `renderResult` (per change) | negligible | Only resolves the config (memoised per options object) and captures the cache key |
 | cold render, 200 rows | ~11ms | One-off per (width, options, theme, language): tokenise, wrap, paint |
 | cold render, 1200 rows | ~47ms | Same, paid once when you expand a very large diff |
-| collapsed large diff | ~2.6ms | Layout stops at the 28 line cap instead of painting 1200 rows and slicing |
+| `write` preview (28 rows) | ~2.6ms | Layout stops at the cap instead of painting 1200 rows and slicing |
 | worktree snapshot | 4–11ms per watched call | One `git add -A` over the dirty files through a warm temporary index |
 | `auto` layout estimate | ~1ms per 1200 rows | One arithmetic pass over the pairs, once per cached render |
 

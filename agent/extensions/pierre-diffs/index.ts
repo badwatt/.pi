@@ -62,10 +62,12 @@ import { renderPatch, type Palette, type Renderer } from "./render.ts";
 import { createSnapshotter } from "./snapshot.ts";
 
 const SETTINGS_KEY = "pierre-diffs";
-const COLLAPSED_LINES = 28;
-const EXPANDED_LINES = 1200;
+/** `write` previews a whole file, not a diff: that is the only thing collapsed. */
+const WRITE_PREVIEW_LINES = 28;
+/** Hard ceiling for a diff. Pi's own edit renderer has none; this bounds the frame. */
+const DIFF_LINES = 1200;
 /** Writes materialise at most this many rows, so the render cap is the only limit. */
-const WRITE_ROW_LIMIT = EXPANDED_LINES;
+const WRITE_ROW_LIMIT = DIFF_LINES;
 const CACHE_LIMIT = 64;
 /** Custom entry type for a diff of files changed by a tool the extension does not own. */
 const DIFF_ENTRY = "pierre-diff";
@@ -327,9 +329,13 @@ const plainDiff = (diff: string, theme: Theme): string =>
 
 const HIDDEN = "\u22ef";
 
-/** Hint appended when a diff does not fit; expanding is the only way to see more. */
+/**
+ * Line shown in place of what did not fit. Collapsed means the rest is one key
+ * away, so the note says how to get it; expanded means the ceiling was hit and
+ * the patch really is cut.
+ */
 const truncatedNote = (expanded: boolean, context: { keyHint(key: string, hint: string): string }): string =>
-  expanded ? `${HIDDEN} diff truncated` : `${HIDDEN} diff truncated \u00b7 ${context.keyHint("app.tools.expand", "expand")}`;
+  expanded ? `${HIDDEN} diff truncated` : `${HIDDEN} more diff lines \u00b7 ${context.keyHint("app.tools.expand", "expand")}`;
 
 let lineCount: { content: string; lines: number } | undefined;
 
@@ -408,7 +414,6 @@ export default function pierreDiffs(pi: ExtensionAPI): void {
       if (!view.config.enabled) return new Text(plainDiff(details?.diff ?? patch, theme), 0, 0);
 
       const language = getLanguageFromPath(context.args.path);
-      const maxLines = expanded ? EXPANDED_LINES : COLLAPSED_LINES;
       return diffComponent((width) => {
         const model = modelFor(context.toolCallId, patch, parsePatch);
         return linesFor(
@@ -418,7 +423,7 @@ export default function pierreDiffs(pi: ExtensionAPI): void {
           theme,
           language,
           width,
-          maxLines,
+          DIFF_LINES,
           { note: truncatedNote(expanded, context) },
         );
       });
@@ -450,7 +455,7 @@ export default function pierreDiffs(pi: ExtensionAPI): void {
 
       const source = context.args.content;
       const language = getLanguageFromPath(context.args.path);
-      const maxLines = expanded ? EXPANDED_LINES : COLLAPSED_LINES;
+      const maxLines = expanded ? DIFF_LINES : WRITE_PREVIEW_LINES;
       const note = truncatedNote(expanded, context);
 
       return diffComponent((width) => {
@@ -505,7 +510,6 @@ export default function pierreDiffs(pi: ExtensionAPI): void {
     if (!view.config.enabled) return new Text(plainDiff(data.patch, theme), 0, 0);
 
     const cacheKey = `entry:${entry.id}`;
-    const maxLines = expanded ? EXPANDED_LINES : COLLAPSED_LINES;
     const model = modelFor(cacheKey, data.patch, parsePatch);
     const summary = theme.fg(
       "dim",
@@ -517,7 +521,7 @@ export default function pierreDiffs(pi: ExtensionAPI): void {
 
     return diffComponent((width) => {
       const options = { note: truncatedNote(expanded, { keyHint }), fileHeader };
-      return [summary, ...linesFor(cacheKey, model, view, theme, language, width, maxLines, options)];
+      return [summary, ...linesFor(cacheKey, model, view, theme, language, width, DIFF_LINES, options)];
     });
   });
 
