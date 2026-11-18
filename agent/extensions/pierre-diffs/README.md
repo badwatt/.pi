@@ -73,6 +73,8 @@ Notes:
   expanded to the same ceiling.
 - A tool diff block is per repository and per call. Files changed by `edit` and
   `write` are not repeated there: those already draw their own patch.
+- Each file header of a multi-file block reads `▸ path  +n -n`, with `+` for a
+  new file, `-` for a deleted one and `→` for a rename.
 - A `\ No newline at end of file` marker is drawn dim under the row it belongs
   to, so a file losing or gaining its trailing newline reads correctly.
 - A change with no text to draw (a mode change, a rename, a binary file) still
@@ -124,8 +126,10 @@ Resulting `settings.json` fragment:
    ranges (`word-alt`/`word`/`char`), using a capped LCS over tokens.
 5. `render.ts` lays the rows out (unified or two columns), then paints gutters,
    markers, line backgrounds, syntax colours and emphasis for a given width. A
-   multi-file patch gets one header per file and no cross-file hunk separator,
-   whose "unchanged lines" count would be meaningless.
+   multi-file patch gets one header per file — state marker, path and the file's
+   own counts — and no cross-file hunk separator, whose "unchanged lines" count
+   would be meaningless. Line numbers on changed rows take the change colour, as
+   pierre's number columns do.
 6. `ansi.ts` overlays the emphasis background on already-highlighted text and
    restores the line background, so fg codes from the highlighter survive.
 

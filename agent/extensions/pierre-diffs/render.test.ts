@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { resolveConfig, type DiffConfig, type DiffOptions } from "./options.ts";
 import { parsePatch, type ParsedPatch } from "./patch.ts";
-import { renderPatch, type Palette, type Renderer } from "./render.ts";
+import { renderPatch, type DiffFile, type Palette, type Renderer } from "./render.ts";
 
 const PALETTE: Palette<string> = {
   added: "a",
@@ -260,7 +260,7 @@ const withFiles = (source: string, width = 40): string[] =>
   strip(
     renderPatch(parse(source), config(), fakeRenderer(), PALETTE, width, {
       maxLines: 200,
-      fileHeader: (file) => `#${file}`,
+      fileHeader: (file) => `#${file.path}`,
     }),
   );
 
@@ -339,4 +339,61 @@ test("the no-newline marker is painted under its row, without gutter or tint", (
 
   const split = strip(render(source, { style: "split" }, 100));
   assert.equal(split.filter((line) => line.includes("No newline")).length, 1);
+});
+
+test("file headers receive per-file state and counts", () => {
+  const seen: DiffFile[] = [];
+  const source = [
+    "diff --git a/new.ts b/new.ts",
+    "new file mode 100644",
+    "--- /dev/null",
+    "+++ b/new.ts",
+    "@@ -0,0 +1,2 @@",
+    "+a",
+    "+b",
+    "diff --git a/gone.ts b/gone.ts",
+    "deleted file mode 100644",
+    "--- a/gone.ts",
+    "+++ /dev/null",
+    "@@ -1,1 +0,0 @@",
+    "-x",
+  ].join("\n");
+
+  renderPatch(parse(source), config(), fakeRenderer(), PALETTE, 60, {
+    maxLines: 99,
+    fileHeader: (file) => {
+      seen.push(file);
+      return `#${file.path}`;
+    },
+  });
+
+  assert.deepEqual(seen, [
+    { path: "new.ts", kind: "added", additions: 2, deletions: 0 },
+    { path: "gone.ts", kind: "deleted", additions: 0, deletions: 1 },
+  ]);
+});
+
+test("a long file header is clipped to the column width", () => {
+  const long = "x".repeat(80);
+  const source = [
+    `diff --git a/${long}.ts b/${long}.ts`,
+    `--- a/${long}.ts`,
+    `+++ b/${long}.ts`,
+    "@@ -1,1 +1,1 @@",
+    "-a",
+    "+b",
+  ].join("\n");
+
+  const lines = strip(renderPatch(parse(source), config(), fakeRenderer(), PALETTE, 40, {
+    maxLines: 9,
+    fileHeader: (file) => `#${file.path}`,
+  }));
+  assert.ok(lines[0].length <= 40, `header is ${lines[0].length} columns`);
+});
+
+test("changed rows colour their line numbers like their code", () => {
+  const lines = render(SAMPLE, {}, 40);
+  // The deletion's gutter starts with the removal colour, the context row dims.
+  assert.ok(lines[1].includes("<toolDiffRemoved>2"), lines[1]);
+  assert.ok(lines[0].includes("<toolDiffContext>1 1"), lines[0]);
 });

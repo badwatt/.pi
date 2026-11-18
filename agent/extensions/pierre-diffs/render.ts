@@ -16,7 +16,14 @@
 
 import { overlayBackground } from "./ansi.ts";
 import type { DiffConfig } from "./options.ts";
-import { lineNumberWidth, type DiffHunk, type DiffRow, type ParsedPatch, type RowKind } from "./patch.ts";
+import {
+  lineNumberWidth,
+  type DiffHunk,
+  type DiffRow,
+  type FileKind,
+  type ParsedPatch,
+  type RowKind,
+} from "./patch.ts";
 import { changedRanges, type Range } from "./words.ts";
 
 const RESET_BG = "\u001b[49m";
@@ -48,6 +55,14 @@ export interface Palette<C = unknown> {
   removedEmphasis: C;
 }
 
+/** One file of a patch: what it is, and what changed in it. */
+export interface DiffFile {
+  path: string;
+  kind: FileKind;
+  additions: number;
+  deletions: number;
+}
+
 export interface RenderLimits {
   /** Hard cap on produced lines; layout stops as soon as it is reached. */
   maxLines: number;
@@ -58,7 +73,7 @@ export interface RenderLimits {
    * a tool changed). A changed file replaces the "unchanged lines" separator,
    * whose counts are meaningless across files.
    */
-  fileHeader?: (file: string) => string;
+  fileHeader?: (file: DiffFile) => string;
 }
 
 interface Side {
@@ -176,6 +191,27 @@ const layoutRows = (
   return { stacked, split };
 };
 
+/** Per-file counts and state, for the file headers of a multi-file patch. */
+const fileSummaries = (patch: ParsedPatch): Map<string, DiffFile> => {
+  const files = new Map<string, DiffFile>();
+
+  for (const hunk of patch.hunks) {
+    if (hunk.file === undefined) continue;
+
+    let file = files.get(hunk.file);
+    if (file === undefined) {
+      file = { path: hunk.file, kind: hunk.fileKind ?? "modified", additions: 0, deletions: 0 };
+      files.set(hunk.file, file);
+    }
+    for (const row of hunk.rows) {
+      if (row.kind === "addition") file.additions++;
+      else if (row.kind === "deletion") file.deletions++;
+    }
+  }
+
+  return files;
+};
+
 const repeatToWidth = (glyph: string, width: number): string => glyph.repeat(Math.max(0, width));
 
 /** Line number gutter for one cell (both numbers in unified, one in split). */
@@ -278,8 +314,10 @@ export const renderPatch = <C>(
         ? overlayBackground(body, row.text, ranges, emphasis, lineBg || RESET_BG)
         : body;
 
+    // Changed rows colour their numbers like their code, as pierre's number
+    // columns do; a context row keeps the dim colour.
     const gutter = config.lineNumbers
-      ? `${renderer.fg("toolDiffContext", gutterFor(row, useNewSide, numberWidth, split))} `
+      ? `${renderer.fg(token, gutterFor(row, useNewSide, numberWidth, split))} `
       : "";
     const marker =
       config.indicators === "none" ? "" : `${renderer.fg(token, markerFor(row.kind, config.indicators))} `;
@@ -310,6 +348,8 @@ export const renderPatch = <C>(
   const lines: string[] = [];
   let truncated = false;
   let paintedFile: string | undefined;
+  // Only multi-file (tool) patches ask for headers, so only they pay for this.
+  const files = limits.fileHeader ? fileSummaries(patch) : undefined;
 
   // Layout stops at the cap instead of painting the whole diff and slicing it.
   // A 1200 row diff costs one frame instead of ~60ms of discarded work.
@@ -348,9 +388,10 @@ export const renderPatch = <C>(
 
     if (file !== undefined && file !== paintedFile) {
       paintedFile = file;
-      if (limits.fileHeader) {
+      const summary = files?.get(file);
+      if (limits.fileHeader && summary) {
         if (lines.length > 0) lines.push("");
-        lines.push(limits.fileHeader(file));
+        lines.push(renderer.truncate(limits.fileHeader(summary), width));
       }
     } else if (hunkIndex > 0) {
       lines.push(...separatorLines(hunk, patch.hunks[hunkIndex - 1], config, renderer, width));

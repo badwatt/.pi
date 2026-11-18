@@ -202,3 +202,22 @@ test("parsePatch attaches the no-newline marker to the row above it", () => {
   // The marker outside a hunk is ignored, not a crash.
   assert.deepEqual(parsePatch("\\ No newline at end of file").hunks, []);
 });
+
+test("parsePatch reads the file state from the git header", () => {
+  const added = "diff --git a/n.ts b/n.ts\nnew file mode 100644\n--- /dev/null\n+++ b/n.ts\n@@ -0,0 +1,1 @@\n+x";
+  const deleted = "diff --git a/d.ts b/d.ts\ndeleted file mode 100644\n--- a/d.ts\n+++ /dev/null\n@@ -1,1 +0,0 @@\n-x";
+  const renamed =
+    "diff --git a/o.ts b/r.ts\nsimilarity index 90%\nrename from o.ts\nrename to r.ts\n--- a/o.ts\n+++ b/r.ts\n@@ -1,1 +1,1 @@\n-a\n+b";
+  const modified = "diff --git a/m.ts b/m.ts\n--- a/m.ts\n+++ b/m.ts\n@@ -1,1 +1,1 @@\n-a\n+b";
+
+  assert.equal(parsePatch(added).hunks[0].fileKind, "added");
+  assert.equal(parsePatch(deleted).hunks[0].fileKind, "deleted");
+  assert.equal(parsePatch(renamed).hunks[0].fileKind, "renamed");
+  assert.equal(parsePatch(modified).hunks[0].fileKind, "modified");
+
+  // The state belongs to one file and must not leak into the next one.
+  assert.deepEqual(
+    parsePatch(`${deleted}\n${modified}`).hunks.map((hunk) => hunk.fileKind),
+    ["deleted", "modified"],
+  );
+});

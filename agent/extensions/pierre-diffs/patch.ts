@@ -17,9 +17,14 @@ export interface DiffRow {
   noNewline?: boolean;
 }
 
+/** What happened to the file, as git reports it in the diff header. */
+export type FileKind = "modified" | "added" | "deleted" | "renamed";
+
 export interface DiffHunk {
   /** Path from the file header, when the patch names one (git diffs do). */
   file?: string;
+  /** Defaults to `modified` when the patch names a file but no state. */
+  fileKind?: FileKind;
   oldStart: number;
   oldCount: number;
   newStart: number;
@@ -67,6 +72,7 @@ export const parsePatch = (patch: string): ParsedPatch => {
   const hunks: DiffHunk[] = [];
   let current: DiffHunk | undefined;
   let file: string | undefined;
+  let fileKind: FileKind | undefined;
   let minusFile: string | undefined;
   let oldNo = 0;
   let newNo = 0;
@@ -78,6 +84,7 @@ export const parsePatch = (patch: string): ParsedPatch => {
     if (header) {
       current = {
         file,
+        fileKind: fileKind ?? (file === undefined ? undefined : "modified"),
         oldStart: Number(header[1]),
         oldCount: count(header[2]),
         newStart: Number(header[3]),
@@ -94,6 +101,24 @@ export const parsePatch = (patch: string): ParsedPatch => {
     // Anything outside a hunk is a file header; a line that is not a diff
     // marker ends the hunk.
     if (!current) {
+      // Per-file header: state, then the two path lines.
+      if (line.startsWith("diff --git ")) {
+        fileKind = undefined;
+        minusFile = undefined;
+        continue;
+      }
+      if (line.startsWith("new file mode ")) {
+        fileKind = "added";
+        continue;
+      }
+      if (line.startsWith("deleted file mode ")) {
+        fileKind = "deleted";
+        continue;
+      }
+      if (line.startsWith("rename from ") || line.startsWith("rename to ")) {
+        fileKind = "renamed";
+        continue;
+      }
       const minus = MINUS_FILE.exec(line);
       if (minus) {
         minusFile = cleanPath(minus[1]);
@@ -127,7 +152,11 @@ export const parsePatch = (patch: string): ParsedPatch => {
       current.rows.push({ kind: "addition", newNo: newNo++, text: displayText(line.slice(1)) });
       continue;
     }
+    // Between files: the next `diff --git` line is consumed here, so the state
+    // of the file that just ended must not survive into the next one.
     current = undefined;
+    fileKind = undefined;
+    minusFile = undefined;
   }
 
   return { hunks, additions, deletions };

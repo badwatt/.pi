@@ -58,7 +58,7 @@ import {
   type OptionKey,
 } from "./options.ts";
 import { addedFilePatch, parsePatch, type ParsedPatch } from "./patch.ts";
-import { renderPatch, type Palette, type Renderer } from "./render.ts";
+import { renderPatch, type DiffFile, type Palette, type Renderer } from "./render.ts";
 import { createSnapshotter } from "./snapshot.ts";
 
 const SETTINGS_KEY = "pierre-diffs";
@@ -528,7 +528,18 @@ export default function pierreDiffs(pi: ExtensionAPI): void {
 
     // Syntax colours only when the block is one language all the way through.
     const language = sharedLanguage(model);
-    const fileHeader = (file: string): string => theme.fg("accent", theme.bold(file));
+    const fileHeader = (file: DiffFile): string => {
+      const state =
+        file.kind === "added"
+          ? theme.fg("success", "+")
+          : file.kind === "deleted"
+            ? theme.fg("error", "-")
+            : file.kind === "renamed"
+              ? theme.fg("accent", "\u2192")
+              : theme.fg("accent", "\u25b8");
+      const counts = `${theme.fg("toolDiffAdded", `+${file.additions}`)} ${theme.fg("toolDiffRemoved", `-${file.deletions}`)}`;
+      return `${state} ${theme.fg("accent", theme.bold(file.path))}  ${counts}`;
+    };
 
     return diffComponent((width) => {
       const options = { note: truncatedNote(expanded, { keyHint }), fileHeader };
