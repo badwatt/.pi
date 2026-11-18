@@ -177,6 +177,9 @@ export const createSnapshotter = (run: RunCommand, options: { dir?: string } = {
         "core.quotePath=false",
         "diff-tree",
         "-r",
+        // Detect renames like `git diff` does: a moved file otherwise shows up
+        // as a deletion plus an addition.
+        "-M",
         "-p",
         "--no-color",
         "--no-ext-diff",

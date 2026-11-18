@@ -208,3 +208,23 @@ test("an aborted probe does not poison the directory", async () => {
     await repo.cleanup();
   }
 });
+
+test("a renamed file keeps its identity and its diff", async () => {
+  const repo = await makeRepo();
+  const snapshots = createSnapshotter(run, { dir: repo.state });
+  try {
+    await snapshots.prime(repo.dir);
+    git(repo.dir, "mv", "a.txt", "b.txt");
+    await writeFile(join(repo.dir, "b.txt"), "one\ntwo\nthree\nfour\n");
+
+    const patch = await snapshots.advance(repo.dir);
+    assert.ok(patch);
+    assert.match(patch, /^rename from a\.txt$/m);
+    assert.match(patch, /^rename to b\.txt$/m);
+    // One file, not a deletion plus an addition.
+    assert.equal((patch.match(/^diff --git /gm) ?? []).length, 1);
+  } finally {
+    await snapshots.dispose();
+    await repo.cleanup();
+  }
+});
