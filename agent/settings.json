@@ -11,6 +11,9 @@
   "tuiMode": "fullscreen",
   "hideThinkingBlock": true,
   "defaultThinkingLevel": "medium",
+  "defaultTools": [
+    "+codemode"
+  ],
   "terminal": {
     "showTerminalProgress": true
   },
