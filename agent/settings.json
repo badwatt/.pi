@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "1.5.2",
+  "lastChangelogVersion": "1.6.0",
   "defaultProvider": "ollama-cloud",
   "defaultModel": "deepseek-v4.1-flash",
   "theme": "catppuccin-mocha",
@@ -15,6 +15,7 @@
     "showTerminalProgress": true
   },
   "packages": [
+    "npm:@narumitw/pi-goal",
     "npm:@pi-archimedes/sudo",
     "npm:pi-lean-ctx",
     "npm:pi-ollama-cloud"
